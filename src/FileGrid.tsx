@@ -47,7 +47,7 @@ function FileGrid({
   ) : (
     <Grid container sx={{ paddingBottom: "48px" }}>
       {files.map((file) => (
-        <Grid item key={file.key} xs={12} sm={6} md={4} lg={3} xl={2}>
+        <Grid key={file.key} size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }}>
           <ListItemButton
             selected={multiSelected?.includes(file.key)}
             onClick={() => {
@@ -81,10 +81,14 @@ function FileGrid({
             </ListItemIcon>
             <ListItemText
               primary={extractFilename(file.key)}
-              primaryTypographyProps={{
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+              slotProps={{
+                primary: {
+                  sx: {
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  },
+                },
               }}
               secondary={
                 <React.Fragment>

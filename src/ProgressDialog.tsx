@@ -15,8 +15,8 @@ import { useMemo, useState } from "react";
 import { TransferTask, useTransferQueue } from "./app/transferQueue";
 import { humanReadableSize } from "./app/utils";
 import {
-  CheckCircleOutline as CheckCircleOutlineIcon,
-  ErrorOutline as ErrorOutlineIcon,
+  CheckCircleOutlined as CheckCircleOutlineIcon,
+  ErrorOutlined as ErrorOutlineIcon,
 } from "@mui/icons-material";
 
 function ProgressDialog({
@@ -49,7 +49,7 @@ function ProgressDialog({
       </Tabs>
       {tasks.length === 0 ? (
         <DialogContent>
-          <Typography textAlign="center" color="text.secondary">
+          <Typography align="center" color="text.secondary">
             No tasks
           </Typography>
         </DialogContent>
