@@ -1,4 +1,3 @@
-// Main.tsx
 import { Home as HomeIcon, NoteAdd as NoteAddIcon } from "@mui/icons-material";
 import {
   Box,
@@ -10,14 +9,35 @@ import {
 } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import FileGrid, { encodeKey, FileItem, isDirectory } from "./FileGrid";
+import FileGrid from "./FileGrid";
 import MultiSelectToolbar from "./MultiSelectToolbar";
 import TextPadDrawer from "./TextPadDrawer";
 import UploadDrawer, { UploadFab } from "./UploadDrawer";
+import {
+  GroupBy,
+  ViewMode,
+  WEBDAV_ENDPOINT,
+  type SortDirection,
+  type SortField,
+} from "./app/constants";
 import { copyPaste, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
+import type { FileGroup, FileItem } from "./app/type";
+import { compareFiles, encodeKey, groupFiles } from "./app/utils";
+import FileDetailsView, {
+  FileDetailsHeader,
+} from "./components/FileDetailsView";
+import FileGroupSection from "./components/FileGroupSection";
 
-// Centered helper
+/**
+ * Date: 2024-07-02
+ * Time: 14:19
+ * Desc: Coordinates file browsing, display organization, upload entry points, and selection actions
+ */
+
+/**
+ * Centers loading or empty-state content inside the browser body
+ */
 function Centered({ children }: { children: React.ReactNode }) {
   return (
     <Box
@@ -32,7 +52,9 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Breadcrumb component
+/**
+ * Renders clickable path segments for the current directory
+ */
 function PathBreadcrumb({
   path,
   onCwdChange,
@@ -67,7 +89,9 @@ function PathBreadcrumb({
   );
 }
 
-// DropZone wrapper
+/**
+ * Wraps the browser body with drag-and-drop upload behavior
+ */
 function DropZone({
   children,
   onDrop,
@@ -105,13 +129,23 @@ function DropZone({
   );
 }
 
-// Main Component
+/**
+ * Coordinates WebDAV file loading, display organization, and file actions
+ */
 function Main({
   search,
   onError,
+  viewMode,
+  sortField,
+  sortDirection,
+  groupBy,
 }: {
   search: string;
   onError: (error: Error) => void;
+  viewMode: ViewMode;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  groupBy: GroupBy;
 }) {
   const [cwd, setCwd] = useState("");
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -151,16 +185,21 @@ function Main({
     }
   }, [cwd, fetchFiles, lastUploadKey, transferQueue]);
 
-  const filteredFiles = useMemo(
-    () =>
-      (search
-        ? files.filter((file) =>
-            file.key.toLowerCase().includes(search.toLowerCase())
-          )
-        : files
-      ).sort((a, b) => (isDirectory(a) ? -1 : isDirectory(b) ? 1 : 0)),
-    [files, search]
-  );
+  const displayGroups = useMemo(() => {
+    const filteredFiles = search
+      ? files.filter((file) =>
+          file.key.toLowerCase().includes(search.toLowerCase())
+        )
+      : files;
+
+    const groups = groupFiles(filteredFiles, groupBy);
+    return groups.map((group) => ({
+      ...group,
+      files: [...group.files].sort((a, b) =>
+        compareFiles(a, b, sortField, sortDirection)
+      ),
+    }));
+  }, [files, groupBy, search, sortDirection, sortField]);
 
   const handleMultiSelect = useCallback((key: string) => {
     setMultiSelected((prev) => {
@@ -188,8 +227,10 @@ function Main({
               ...Array.from(files).map((file) => ({ file, basedir: cwd }))
             );
           }}>
-          <FileGrid
-            files={filteredFiles}
+          <FileBrowserContent
+            groups={displayGroups}
+            viewMode={viewMode}
+            groupBy={groupBy}
             onCwdChange={(newCwd: string) => setCwd(newCwd)}
             multiSelected={multiSelected}
             onMultiSelect={handleMultiSelect}
@@ -236,7 +277,7 @@ function Main({
         onDownload={() => {
           if (multiSelected?.length !== 1) return;
           const a = document.createElement("a");
-          a.href = `/webdav/${encodeKey(multiSelected[0])}`;
+          a.href = `${WEBDAV_ENDPOINT}${encodeKey(multiSelected[0])}`;
           a.download = multiSelected[0].split("/").pop()!;
           a.click();
         }}
@@ -255,19 +296,127 @@ function Main({
           const confirmMessage = "Delete the following file(s) permanently?";
           if (!window.confirm(`${confirmMessage}\n${filenames}`)) return;
           for (const key of multiSelected)
-            await fetch(`/webdav/${encodeKey(key)}`, { method: "DELETE" });
+            await fetch(`${WEBDAV_ENDPOINT}${encodeKey(key)}`, {
+              method: "DELETE",
+            });
           fetchFiles();
         }}
         onShare={() => {
           if (multiSelected?.length !== 1) return;
           const url = new URL(
-            `/webdav/${encodeKey(multiSelected[0])}`,
+            `${WEBDAV_ENDPOINT}${encodeKey(multiSelected[0])}`,
             window.location.href
           );
           navigator.share({ url: url.toString() });
         }}
       />
     </>
+  );
+}
+
+/**
+ * Renders either a flat file view or Windows-style grouped sections
+ */
+function FileBrowserContent({
+  groups,
+  viewMode,
+  groupBy,
+  onCwdChange,
+  multiSelected,
+  onMultiSelect,
+  emptyMessage,
+}: {
+  groups: FileGroup[];
+  viewMode: ViewMode;
+  groupBy: GroupBy;
+  onCwdChange: (newCwd: string) => void;
+  multiSelected: string[] | null;
+  onMultiSelect: (key: string) => void;
+  emptyMessage: React.ReactNode;
+}) {
+  const fileCount = groups.reduce(
+    (total, group) => total + group.files.length,
+    0
+  );
+  if (!fileCount) return emptyMessage;
+
+  if (groupBy === GroupBy.None) {
+    return (
+      <FileView
+        files={groups[0].files}
+        viewMode={viewMode}
+        onCwdChange={onCwdChange}
+        multiSelected={multiSelected}
+        onMultiSelect={onMultiSelect}
+        showDetailsHeader
+        withBottomPadding
+      />
+    );
+  }
+
+  return (
+    <Box sx={{ paddingBottom: "48px" }}>
+      {viewMode === ViewMode.Details && <FileDetailsHeader />}
+      {groups.map((group) => (
+        <FileGroupSection
+          key={group.id}
+          label={group.label}
+          count={group.files.length}>
+          <FileView
+            files={group.files}
+            viewMode={viewMode}
+            onCwdChange={onCwdChange}
+            multiSelected={multiSelected}
+            onMultiSelect={onMultiSelect}
+            showDetailsHeader={false}
+            withBottomPadding={false}
+          />
+        </FileGroupSection>
+      ))}
+    </Box>
+  );
+}
+
+/**
+ * Renders grouped or ungrouped files with the selected browser view
+ */
+function FileView({
+  files,
+  viewMode,
+  onCwdChange,
+  multiSelected,
+  onMultiSelect,
+  showDetailsHeader,
+  withBottomPadding,
+}: {
+  files: FileItem[];
+  viewMode: ViewMode;
+  onCwdChange: (newCwd: string) => void;
+  multiSelected: string[] | null;
+  onMultiSelect: (key: string) => void;
+  showDetailsHeader: boolean;
+  withBottomPadding: boolean;
+}) {
+  if (viewMode === ViewMode.Details) {
+    return (
+      <FileDetailsView
+        files={files}
+        onCwdChange={onCwdChange}
+        multiSelected={multiSelected}
+        onMultiSelect={onMultiSelect}
+        showHeader={showDetailsHeader}
+      />
+    );
+  }
+
+  return (
+    <FileGrid
+      files={files}
+      onCwdChange={onCwdChange}
+      multiSelected={multiSelected}
+      onMultiSelect={onMultiSelect}
+      withBottomPadding={withBottomPadding}
+    />
   );
 }
 

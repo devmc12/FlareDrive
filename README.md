@@ -11,9 +11,9 @@ Free serverless backend with a limit of 100,000 invocation requests per day.
 - Search files
 - Image/video/PDF thumbnails
 - WebDAV endpoint
-- Scoped WebDAV access tokens
-- Vite-based frontend
 - Drag and drop upload
+- **Scoped WebDAV access tokens**
+- **Vite-based frontend**
 
 ## Usage
 

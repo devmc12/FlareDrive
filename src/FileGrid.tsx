@@ -7,45 +7,43 @@ import {
 } from "@mui/material";
 import React from "react";
 import MimeIcon from "./MimeIcon";
-import { humanReadableSize } from "./app/utils";
+import { THUMBNAIL_PATH_PREFIX, WEBDAV_ENDPOINT } from "./app/constants";
+import type { FileItem } from "./app/type";
+import {
+  encodeKey,
+  extractFilename,
+  humanReadableSize,
+  isDirectory,
+} from "./app/utils";
 
-export interface FileItem {
-  key: string;
-  size: number;
-  uploaded: string;
-  httpMetadata: { contentType: string };
-  customMetadata?: { thumbnail?: string };
-}
+/**
+ * Date: 2024-07-02
+ * Time: 14:19
+ * Desc: Renders files in the responsive tile grid view
+ */
 
-function extractFilename(key: string) {
-  return key.split("/").pop();
-}
-
-export function encodeKey(key: string) {
-  return key.split("/").map(encodeURIComponent).join("/");
-}
-
-export function isDirectory(file: FileItem) {
-  return file.httpMetadata?.contentType === "application/x-directory";
-}
-
+/**
+ * Renders files as responsive tiles while preserving browser interactions
+ */
 function FileGrid({
   files,
   onCwdChange,
   multiSelected,
   onMultiSelect,
   emptyMessage,
+  withBottomPadding = true,
 }: {
   files: FileItem[];
   onCwdChange: (newCwd: string) => void;
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   emptyMessage?: React.ReactNode;
+  withBottomPadding?: boolean;
 }) {
   return files.length === 0 ? (
     emptyMessage
   ) : (
-    <Grid container sx={{ paddingBottom: "48px" }}>
+    <Grid container sx={{ paddingBottom: withBottomPadding ? "48px" : 0 }}>
       {files.map((file) => (
         <Grid key={file.key} size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }}>
           <ListItemButton
@@ -57,7 +55,7 @@ function FileGrid({
                 onCwdChange(file.key + "/");
               } else
                 window.open(
-                  `/webdav/${encodeKey(file.key)}`,
+                  `${WEBDAV_ENDPOINT}${encodeKey(file.key)}`,
                   "_blank",
                   "noopener,noreferrer"
                 );
@@ -70,7 +68,7 @@ function FileGrid({
             <ListItemIcon>
               {file.customMetadata?.thumbnail ? (
                 <img
-                  src={`/webdav/_$flaredrive$/thumbnails/${file.customMetadata.thumbnail}.png`}
+                  src={`${WEBDAV_ENDPOINT}${THUMBNAIL_PATH_PREFIX}${file.customMetadata.thumbnail}.png`}
                   alt={file.key}
                   style={{ width: 36, height: 36, objectFit: "cover" }}
                 />

@@ -1,10 +1,25 @@
 import pLimit from "p-limit";
 
-import { encodeKey, FileItem } from "../FileGrid";
-import { TransferTask } from "./transferQueue";
+import {
+  PDF_CONTENT_TYPE,
+  THUMBNAIL_PATH_PREFIX,
+  WEBDAV_ENDPOINT,
+} from "./constants";
+import type { TransferTask } from "./transferQueue";
+import type { FileItem } from "./type";
+import { encodeKey } from "./utils";
 
-const WEBDAV_ENDPOINT = "/webdav/";
+/**
+ * Date: 2024-07-04
+ * Time: 15:47
+ * Desc: Handles WebDAV transfer requests, thumbnails, and upload task execution
+ */
 
+/**
+ * Fetches direct children for a WebDAV path using PROPFIND
+ * @param path Current directory key
+ * @returns Parsed child file items
+ */
 export async function fetchPath(path: string) {
   const res = await fetch(`${WEBDAV_ENDPOINT}${encodeKey(path)}`, {
     method: "PROPFIND",
@@ -37,7 +52,7 @@ export async function fetchPath(path: string) {
         "thumbnail"
       )[0]?.textContent;
       return {
-        key: decodeURI(href).replace(/^\/webdav\//, ""),
+        key: stripWebdavEndpoint(decodeURI(href)),
         size: size ? Number(size) : 0,
         uploaded: lastModified!,
         httpMetadata: { contentType: contentType! },
@@ -47,8 +62,25 @@ export async function fetchPath(path: string) {
   return items;
 }
 
+/**
+ * Removes the frontend WebDAV endpoint prefix from a response href
+ * @param href Decoded href from a WebDAV response
+ * @returns Object key relative to the WebDAV endpoint
+ */
+function stripWebdavEndpoint(href: string) {
+  return href.startsWith(WEBDAV_ENDPOINT)
+    ? href.slice(WEBDAV_ENDPOINT.length)
+    : href.replace(/^\//, "");
+}
+
+// Square thumbnail side length generated before file upload
 const THUMBNAIL_SIZE = 144;
 
+/**
+ * Generates a square thumbnail for previewable image, video, or PDF uploads
+ * @param file Source file selected for upload
+ * @returns PNG-compatible thumbnail blob
+ */
 export async function generateThumbnail(file: File) {
   const canvas = document.createElement("canvas");
   canvas.width = THUMBNAIL_SIZE;
@@ -63,7 +95,7 @@ export async function generateThumbnail(file: File) {
     });
     ctx.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   } else if (file.type === "video/mp4") {
-    // Generate thumbnail from video
+    // Draw the first playable video frame into the thumbnail canvas
     const video = await new Promise<HTMLVideoElement>((resolve, reject) => {
       const video = document.createElement("video");
       video.muted = true;
@@ -84,7 +116,7 @@ export async function generateThumbnail(file: File) {
         .catch(reject);
     });
     ctx.drawImage(video, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-  } else if (file.type === "application/pdf") {
+  } else if (file.type === PDF_CONTENT_TYPE) {
     const pdfjsLib = await import(
       // @ts-ignore
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs"
@@ -107,6 +139,11 @@ export async function generateThumbnail(file: File) {
   return thumbnailBlob;
 }
 
+/**
+ * Calculates a SHA-1 hex digest for blob-based thumbnail naming
+ * @param blob Source blob
+ * @returns Hex-encoded SHA-1 digest
+ */
 export async function blobDigest(blob: Blob) {
   const digest = await crypto.subtle.digest("SHA-1", await blob.arrayBuffer());
   const digestArray = Array.from(new Uint8Array(digest));
@@ -116,8 +153,15 @@ export async function blobDigest(blob: Blob) {
   return digestHex;
 }
 
-export const SIZE_LIMIT = 100 * 1000 * 1000; // 100MB
+// Cloudflare Workers regular request uploads are capped below this size
+export const SIZE_LIMIT = 100 * 1000 * 1000;
 
+/**
+ * Sends a request through XMLHttpRequest so upload progress is observable
+ * @param url Target request URL
+ * @param requestInit Fetch-like request options plus upload progress callback
+ * @returns Fetch-compatible response wrapper
+ */
 function xhrFetch(
   url: RequestInfo | URL,
   requestInit: RequestInit & {
@@ -158,6 +202,13 @@ function xhrFetch(
   });
 }
 
+/**
+ * Uploads a large file with the WebDAV multipart upload API
+ * @param key Target object key
+ * @param file Source file
+ * @param options Optional headers and progress callback
+ * @returns Final completion response
+ */
 export async function multipartUpload(
   key: string,
   file: File,
@@ -172,10 +223,13 @@ export async function multipartUpload(
   const headers = options?.headers || {};
   headers["content-type"] = file.type;
 
-  const uploadResponse = await fetch(`/webdav/${encodeKey(key)}?uploads`, {
-    headers,
-    method: "POST",
-  });
+  const uploadResponse = await fetch(
+    `${WEBDAV_ENDPOINT}${encodeKey(key)}?uploads`,
+    {
+      headers,
+      method: "POST",
+    }
+  );
   const { uploadId } = await uploadResponse.json<{ uploadId: string }>();
   const totalChunks = Math.ceil(file.size / SIZE_LIMIT);
 
@@ -189,7 +243,7 @@ export async function multipartUpload(
         partNumber: i.toString(),
         uploadId,
       });
-      const uploadUrl = `/webdav/${encodeKey(key)}?${searchParams}`;
+      const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(key)}?${searchParams}`;
       if (i === limit.concurrency)
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -221,14 +275,23 @@ export async function multipartUpload(
   );
   const uploadedParts = await Promise.all(promises);
   const completeParams = new URLSearchParams({ uploadId });
-  const response = await fetch(`/webdav/${encodeKey(key)}?${completeParams}`, {
-    method: "POST",
-    body: JSON.stringify({ parts: uploadedParts }),
-  });
+  const response = await fetch(
+    `${WEBDAV_ENDPOINT}${encodeKey(key)}?${completeParams}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ parts: uploadedParts }),
+    }
+  );
   if (!response.ok) throw new Error(await response.text());
   return response;
 }
 
+/**
+ * Copies or moves a file through WebDAV COPY and MOVE requests
+ * @param source Source object key
+ * @param target Target object key
+ * @param move Whether to move instead of copy
+ */
 export async function copyPaste(source: string, target: string, move = false) {
   const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(source)}`;
   const destinationUrl = new URL(
@@ -241,6 +304,10 @@ export async function copyPaste(source: string, target: string, move = false) {
   });
 }
 
+/**
+ * Prompts for a folder name and creates it inside the current directory
+ * @param cwd Current directory key
+ */
 export async function createFolder(cwd: string) {
   try {
     const folderName = window.prompt("Folder name");
@@ -257,6 +324,12 @@ export async function createFolder(cwd: string) {
   }
 }
 
+/**
+ * Processes an upload task including optional thumbnail generation
+ * @param task Transfer task from the queue
+ * @param onTaskProgress Optional upload progress callback
+ * @returns Upload response for the completed task
+ */
 export async function processTransferTask({
   task,
   onTaskProgress,
@@ -271,13 +344,13 @@ export async function processTransferTask({
   if (
     file.type.startsWith("image/") ||
     file.type === "video/mp4" ||
-    file.type === "application/pdf"
+    file.type === PDF_CONTENT_TYPE
   ) {
     try {
       const thumbnailBlob = await generateThumbnail(file);
       const digestHex = await blobDigest(thumbnailBlob);
 
-      const thumbnailUploadUrl = `/webdav/_$flaredrive$/thumbnails/${digestHex}.png`;
+      const thumbnailUploadUrl = `${WEBDAV_ENDPOINT}${THUMBNAIL_PATH_PREFIX}${digestHex}.png`;
       try {
         await fetch(thumbnailUploadUrl, {
           method: "PUT",

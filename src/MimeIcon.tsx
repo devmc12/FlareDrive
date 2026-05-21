@@ -7,24 +7,47 @@ import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutl
 import PdfIcon from "@mui/icons-material/PictureAsPdf";
 import VideoFileIcon from "@mui/icons-material/VideoFile";
 
-function MimeIcon({ contentType }: { contentType: string }) {
-  const fallbackIcon = <InsertDriveFileOutlinedIcon fontSize="large" />;
+import {
+  ARCHIVE_CONTENT_TYPES,
+  DIRECTORY_CONTENT_TYPE,
+  PDF_CONTENT_TYPE,
+} from "./app/constants";
+
+/**
+ * Date: 2024-07-02
+ * Time: 14:19
+ * Desc: Chooses a Material icon for common file content types
+ */
+
+type MimeIconSize = "inherit" | "large" | "medium" | "small";
+
+/**
+ * Chooses a Material icon for a content type and display size
+ */
+function MimeIcon({
+  contentType,
+  fontSize = "large",
+}: {
+  contentType: string;
+  fontSize?: MimeIconSize;
+}) {
+  const fallbackIcon = <InsertDriveFileOutlinedIcon fontSize={fontSize} />;
   if (typeof contentType !== "string") return fallbackIcon;
 
   return contentType.startsWith("image/") ? (
-    <ImageIcon fontSize="large" />
+    <ImageIcon fontSize={fontSize} />
   ) : contentType.startsWith("audio/") ? (
-    <AudioFileIcon fontSize="large" />
+    <AudioFileIcon fontSize={fontSize} />
   ) : contentType.startsWith("video/") ? (
-    <VideoFileIcon fontSize="large" />
-  ) : contentType === "application/pdf" ? (
-    <PdfIcon fontSize="large" />
-  ) : ["application/zip", "application/gzip"].includes(contentType) ? (
-    <FolderZipOutlinedIcon fontSize="large" />
+    <VideoFileIcon fontSize={fontSize} />
+  ) : contentType === PDF_CONTENT_TYPE ? (
+    <PdfIcon fontSize={fontSize} />
+  ) : (ARCHIVE_CONTENT_TYPES as readonly string[]).includes(contentType) ? (
+    <FolderZipOutlinedIcon fontSize={fontSize} />
   ) : contentType.startsWith("text/") ? (
-    <CodeIcon fontSize="large" />
-  ) : contentType === "application/x-directory" ? (
-    <FolderIcon fontSize="large" />
+    <CodeIcon fontSize={fontSize} />
+  ) : contentType === DIRECTORY_CONTENT_TYPE ? (
+    <FolderIcon fontSize={fontSize} />
   ) : (
     fallbackIcon
   );

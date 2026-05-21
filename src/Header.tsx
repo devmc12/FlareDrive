@@ -1,15 +1,48 @@
-import { IconButton, InputBase, Menu, MenuItem, Toolbar } from "@mui/material";
-import { useState } from "react";
 import { MoreHoriz as MoreHorizIcon } from "@mui/icons-material";
+import { IconButton, InputBase, Toolbar } from "@mui/material";
+import { useState } from "react";
 
+import type {
+  GroupBy,
+  SortDirection,
+  SortField,
+  ViewMode,
+} from "./app/constants";
+import FileBrowserMenu from "./components/FileBrowserMenu";
+
+/**
+ * Date: 2024-07-02
+ * Time: 14:19
+ * Desc: Renders the file browser search bar and display control menu
+ */
+
+/**
+ * Renders the search input and opens browser display controls
+ */
 function Header({
   search,
   onSearchChange,
   setShowProgressDialog,
+  viewMode,
+  sortField,
+  sortDirection,
+  groupBy,
+  onViewModeChange,
+  onSortFieldChange,
+  onSortDirectionChange,
+  onGroupByChange,
 }: {
   search: string;
   onSearchChange: (newSearch: string) => void;
   setShowProgressDialog: (show: boolean) => void;
+  viewMode: ViewMode;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  groupBy: GroupBy;
+  onViewModeChange: (viewMode: ViewMode) => void;
+  onSortFieldChange: (sortField: SortField) => void;
+  onSortDirectionChange: (sortDirection: SortDirection) => void;
+  onGroupByChange: (groupBy: GroupBy) => void;
 }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -31,26 +64,23 @@ function Header({
         aria-label="More"
         color="inherit"
         sx={{ marginLeft: 0.5 }}
-        onClick={(e) => setAnchorEl(e.currentTarget)}
-      >
+        onClick={(e) => setAnchorEl(e.currentTarget)}>
         <MoreHorizIcon />
       </IconButton>
-      <Menu
+      <FileBrowserMenu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={() => setAnchorEl(null)}
-      >
-        <MenuItem>View as</MenuItem>
-        <MenuItem>Sort by</MenuItem>
-        <MenuItem
-          onClick={() => {
-            setAnchorEl(null);
-            setShowProgressDialog(true);
-          }}
-        >
-          Progress
-        </MenuItem>
-      </Menu>
+        viewMode={viewMode}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        groupBy={groupBy}
+        onViewModeChange={onViewModeChange}
+        onSortFieldChange={onSortFieldChange}
+        onSortDirectionChange={onSortDirectionChange}
+        onGroupByChange={onGroupByChange}
+        onShowProgress={() => setShowProgressDialog(true)}
+      />
     </Toolbar>
   );
 }
