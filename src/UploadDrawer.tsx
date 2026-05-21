@@ -49,12 +49,15 @@ export const UploadFab = forwardRef<
       sx={{
         bottom: 16,
         color: "white",
+        height: { xs: 48, sm: 56 },
+        minHeight: { xs: 48, sm: 56 },
         position: "fixed",
         right: 16,
+        width: { xs: 48, sm: 56 },
         zIndex: 1001,
       }}
       onClick={onClick}>
-      <UploadIcon fontSize="large" />
+      <UploadIcon sx={{ fontSize: { xs: 26, sm: 30 } }} />
     </Fab>
   );
 });

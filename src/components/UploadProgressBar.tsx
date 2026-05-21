@@ -132,15 +132,27 @@ function UploadProgressBar({
                 {activeUpload.name}
               </Typography>
             </Box>
-            <Typography
-              color="text.secondary"
-              component="div"
-              sx={{ flexShrink: 0, fontSize: 12 }}>
-              {progressLabel}
-            </Typography>
-            <Button size="small" onClick={onOpenUploads}>
-              Uploads
-            </Button>
+            <Box
+              sx={{
+                alignItems: "flex-end",
+                display: "flex",
+                flexDirection: "column",
+                flexShrink: 0,
+                gap: 0.25,
+              }}>
+              <Button
+                size="small"
+                onClick={onOpenUploads}
+                sx={{ lineHeight: 1.2, minWidth: 0, padding: 0 }}>
+                Uploads
+              </Button>
+              <Typography
+                color="text.secondary"
+                component="div"
+                sx={{ fontSize: 12, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+                {progressLabel}
+              </Typography>
+            </Box>
           </Stack>
           <LinearProgress
             variant={activeUpload.total > 0 ? "determinate" : "indeterminate"}

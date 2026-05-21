@@ -1,6 +1,7 @@
 import {
   CancelOutlined as CancelOutlinedIcon,
   CheckCircleOutlined as CheckCircleOutlineIcon,
+  Close as CloseIcon,
   ErrorOutlined as ErrorOutlineIcon,
   HourglassEmpty as HourglassEmptyIcon,
 } from "@mui/icons-material";
@@ -159,15 +160,20 @@ function ProgressDialog({
         <Typography component="span" variant="h6">
           Progress
         </Typography>
-        {tab === ProgressDialogTab.Uploads && activeUploads.length > 0 && (
-          <Button
-            color="error"
-            size="small"
-            startIcon={<CancelOutlinedIcon />}
-            onClick={cancelUploads}>
-            Cancel All
-          </Button>
-        )}
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+          {tab === ProgressDialogTab.Uploads && activeUploads.length > 0 && (
+            <Button
+              color="error"
+              size="small"
+              startIcon={<CancelOutlinedIcon />}
+              onClick={cancelUploads}>
+              Cancel All
+            </Button>
+          )}
+          <IconButton aria-label="Close progress dialog" onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        </Stack>
       </DialogTitle>
       <Tabs
         value={tab}

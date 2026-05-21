@@ -1,10 +1,12 @@
-import { Home as HomeIcon } from "@mui/icons-material";
+import { Home as HomeIcon, Refresh as RefreshIcon } from "@mui/icons-material";
 import {
   Box,
   Breadcrumbs,
   Button,
   CircularProgress,
+  Fab,
   Link,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -172,22 +174,7 @@ function Main({
 
   const transferQueue = useTransferQueue();
   const uploadEnqueue = useUploadEnqueue();
-  const hasActiveUpload = useMemo(
-    () =>
-      transferQueue.some(
-        (task) =>
-          task.type === "upload" &&
-          (task.status === "pending" || task.status === "in-progress")
-      ),
-    [transferQueue]
-  );
-  const fileBrowserBottomPadding = hasActiveUpload
-    ? multiSelected === null
-      ? "112px"
-      : "176px"
-    : multiSelected === null
-      ? "48px"
-      : "72px";
+  const fileBrowserBottomPadding = "152px";
 
   useEffect(() => {
     onBottomActionBarVisibilityChange(multiSelected !== null);
@@ -233,6 +220,11 @@ function Main({
   useEffect(() => setLoading(true), [cwd]);
 
   useEffect(() => {
+    fetchFiles();
+  }, [fetchFiles]);
+
+  const refreshCurrentPath = useCallback(() => {
+    setLoading(true);
     fetchFiles();
   }, [fetchFiles]);
 
@@ -334,10 +326,33 @@ function Main({
       )}
 
       {multiSelected === null && (
-        <UploadFab
-          open={showUploadDrawer}
-          onClick={() => setShowUploadDrawer((open) => !open)}
-        />
+        <>
+          {!showUploadDrawer && (
+            <Tooltip title="Refresh" placement="left" arrow>
+              <Fab
+                aria-label="Refresh"
+                color="primary"
+                size="large"
+                sx={{
+                  bottom: { xs: 80, sm: 88 },
+                  color: "white",
+                  height: { xs: 48, sm: 56 },
+                  minHeight: { xs: 48, sm: 56 },
+                  position: "fixed",
+                  right: 16,
+                  width: { xs: 48, sm: 56 },
+                  zIndex: 1001,
+                }}
+                onClick={refreshCurrentPath}>
+                <RefreshIcon sx={{ fontSize: { xs: 26, sm: 30 } }} />
+              </Fab>
+            </Tooltip>
+          )}
+          <UploadFab
+            open={showUploadDrawer}
+            onClick={() => setShowUploadDrawer((open) => !open)}
+          />
+        </>
       )}
 
       <UploadDrawer
