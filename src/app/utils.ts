@@ -63,6 +63,47 @@ export function encodeKey(key: string) {
 }
 
 /**
+ * Normalizes a directory key for browser navigation state
+ * @param path Raw directory key
+ * @returns Directory key with no leading slash and a trailing slash when non-root
+ */
+function normalizeDirectoryPath(path: string) {
+  const normalizedPath = path.replace(/^\/+/, "");
+  if (!normalizedPath) return "";
+  return normalizedPath.endsWith("/") ? normalizedPath : `${normalizedPath}/`;
+}
+
+/**
+ * Encodes a directory key into the app URL hash
+ * @param cwd Current directory key
+ * @returns Hash path that can be assigned to window.location.hash
+ */
+export function encodeDirectoryHash(cwd: string) {
+  return `#/${encodeKey(normalizeDirectoryPath(cwd))}`;
+}
+
+/**
+ * Decodes an app URL hash into a normalized directory key
+ * @param hash Current window.location.hash value
+ * @returns Directory key or root for missing and invalid hashes
+ */
+export function decodeDirectoryHash(hash: string) {
+  if (!hash || hash === "#" || !hash.startsWith("#/")) return "";
+
+  try {
+    return normalizeDirectoryPath(
+      hash
+        .slice(2)
+        .split("/")
+        .map((segment) => decodeURIComponent(segment))
+        .join("/")
+    );
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Detects directory placeholder items returned by WebDAV
  * @param file File item metadata
  * @returns Whether the item is a directory

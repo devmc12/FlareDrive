@@ -23,7 +23,13 @@ import {
 import { copyPaste, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
 import type { FileGroup, FileItem } from "./app/type";
-import { compareFiles, encodeKey, groupFiles } from "./app/utils";
+import {
+  compareFiles,
+  decodeDirectoryHash,
+  encodeDirectoryHash,
+  encodeKey,
+  groupFiles,
+} from "./app/utils";
 import FileDetailsView, {
   FileDetailsHeader,
 } from "./components/FileDetailsView";
@@ -147,7 +153,9 @@ function Main({
   sortDirection: SortDirection;
   groupBy: GroupBy;
 }) {
-  const [cwd, setCwd] = useState("");
+  const [cwd, setCwd] = useState(() =>
+    decodeDirectoryHash(window.location.hash)
+  );
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [multiSelected, setMultiSelected] = useState<string[] | null>(null);
@@ -157,6 +165,32 @@ function Main({
 
   const transferQueue = useTransferQueue();
   const uploadEnqueue = useUploadEnqueue();
+
+  const navigateToCwd = useCallback((newCwd: string) => {
+    const nextHash = encodeDirectoryHash(newCwd);
+    if (window.location.hash === nextHash) {
+      setCwd(decodeDirectoryHash(nextHash));
+      return;
+    }
+
+    window.location.hash = nextHash;
+  }, []);
+
+  useEffect(() => {
+    const syncCwdFromHash = () => {
+      const nextCwd = decodeDirectoryHash(window.location.hash);
+      const normalizedHash = encodeDirectoryHash(nextCwd);
+      if (window.location.hash !== normalizedHash) {
+        window.history.replaceState(null, "", normalizedHash);
+      }
+
+      setCwd(nextCwd);
+    };
+
+    syncCwdFromHash();
+    window.addEventListener("hashchange", syncCwdFromHash);
+    return () => window.removeEventListener("hashchange", syncCwdFromHash);
+  }, []);
 
   const fetchFiles = useCallback(() => {
     fetchPath(cwd)
@@ -214,7 +248,7 @@ function Main({
 
   return (
     <>
-      {cwd && <PathBreadcrumb path={cwd} onCwdChange={setCwd} />}
+      {cwd && <PathBreadcrumb path={cwd} onCwdChange={navigateToCwd} />}
 
       {loading ? (
         <Centered>
@@ -231,7 +265,7 @@ function Main({
             groups={displayGroups}
             viewMode={viewMode}
             groupBy={groupBy}
-            onCwdChange={(newCwd: string) => setCwd(newCwd)}
+            onCwdChange={navigateToCwd}
             multiSelected={multiSelected}
             onMultiSelect={handleMultiSelect}
             emptyMessage={<Centered>No files or folders</Centered>}
