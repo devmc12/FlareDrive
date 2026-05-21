@@ -31,19 +31,19 @@ function FileGrid({
   multiSelected,
   onMultiSelect,
   emptyMessage,
-  withBottomPadding = true,
+  bottomPadding = "48px",
 }: {
   files: FileItem[];
   onCwdChange: (newCwd: string) => void;
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   emptyMessage?: React.ReactNode;
-  withBottomPadding?: boolean;
+  bottomPadding?: React.CSSProperties["paddingBottom"];
 }) {
   return files.length === 0 ? (
     emptyMessage
   ) : (
-    <Grid container sx={{ paddingBottom: withBottomPadding ? "48px" : 0 }}>
+    <Grid container sx={{ paddingBottom: bottomPadding }}>
       {files.map((file) => {
         const filename = extractFilename(file.key);
 
@@ -73,6 +73,7 @@ function FileGrid({
                   <img
                     src={`${WEBDAV_ENDPOINT}${THUMBNAIL_PATH_PREFIX}${file.customMetadata.thumbnail}.png`}
                     alt={file.key}
+                    draggable={false}
                     style={{ width: 36, height: 36, objectFit: "cover" }}
                   />
                 ) : (

@@ -10,7 +10,7 @@ import React, { useState } from "react";
 
 import Header from "./Header";
 import Main from "./Main";
-import ProgressDialog from "./ProgressDialog";
+import ProgressDialog, { ProgressDialogTab } from "./ProgressDialog";
 import {
   DEFAULT_GROUP_BY,
   DEFAULT_SORT_DIRECTION,
@@ -22,6 +22,7 @@ import {
   type ViewMode,
 } from "./app/constants";
 import { TransferQueueProvider } from "./app/transferQueue";
+import UploadProgressBar from "./components/UploadProgressBar";
 
 /**
  * Date: 2024-07-02
@@ -49,7 +50,19 @@ function App() {
   );
   const [groupBy, setGroupBy] = useState<GroupBy>(DEFAULT_GROUP_BY);
   const [showProgressDialog, setShowProgressDialog] = React.useState(false);
+  const [progressDialogTab, setProgressDialogTab] = useState(
+    ProgressDialogTab.Downloads
+  );
+  const [bottomActionBarOpen, setBottomActionBarOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  /**
+   * Opens the progress dialog directly to the upload task list
+   */
+  function openUploadsProgress() {
+    setProgressDialogTab(ProgressDialogTab.Uploads);
+    setShowProgressDialog(true);
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -77,6 +90,7 @@ function App() {
             sortField={sortField}
             sortDirection={sortDirection}
             groupBy={groupBy}
+            onBottomActionBarVisibilityChange={setBottomActionBarOpen}
           />
         </Stack>
         <Snackbar
@@ -88,6 +102,12 @@ function App() {
         <ProgressDialog
           open={showProgressDialog}
           onClose={() => setShowProgressDialog(false)}
+          tab={progressDialogTab}
+          onTabChange={setProgressDialogTab}
+        />
+        <UploadProgressBar
+          lifted={bottomActionBarOpen}
+          onOpenUploads={openUploadsProgress}
         />
       </TransferQueueProvider>
     </ThemeProvider>

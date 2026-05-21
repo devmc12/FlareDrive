@@ -1,10 +1,32 @@
 import { type RequestHandlerParams } from "./types";
 import { listAll, notFound } from "./utils";
 
+/**
+ * Date: 2024-07-08
+ * Time: 11:29
+ * Desc: Deletes WebDAV objects and aborts unfinished multipart uploads
+ */
+
 export async function handleRequestDelete({
   bucket,
   path,
+  request,
 }: RequestHandlerParams) {
+  const searchParams = new URL(request.url).searchParams;
+  if (searchParams.has("uploadId")) {
+    const uploadId = searchParams.get("uploadId");
+    if (!uploadId) return new Response("Bad Request", { status: 400 });
+
+    try {
+      await bucket.resumeMultipartUpload(path, uploadId).abort();
+      return new Response(null, { status: 204 });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Abort multipart failed";
+      return new Response(message, { status: 400 });
+    }
+  }
+
   if (path !== "") {
     const obj = await bucket.head(path);
     if (obj === null) return notFound();

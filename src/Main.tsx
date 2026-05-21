@@ -145,6 +145,7 @@ function Main({
   sortField,
   sortDirection,
   groupBy,
+  onBottomActionBarVisibilityChange,
 }: {
   search: string;
   onError: (error: Error) => void;
@@ -152,6 +153,7 @@ function Main({
   sortField: SortField;
   sortDirection: SortDirection;
   groupBy: GroupBy;
+  onBottomActionBarVisibilityChange: (open: boolean) => void;
 }) {
   const [cwd, setCwd] = useState(() =>
     decodeDirectoryHash(window.location.hash)
@@ -165,6 +167,27 @@ function Main({
 
   const transferQueue = useTransferQueue();
   const uploadEnqueue = useUploadEnqueue();
+  const hasActiveUpload = useMemo(
+    () =>
+      transferQueue.some(
+        (task) =>
+          task.type === "upload" &&
+          (task.status === "pending" || task.status === "in-progress")
+      ),
+    [transferQueue]
+  );
+  const fileBrowserBottomPadding = hasActiveUpload
+    ? multiSelected === null
+      ? "112px"
+      : "176px"
+    : multiSelected === null
+      ? "48px"
+      : "72px";
+
+  useEffect(() => {
+    onBottomActionBarVisibilityChange(multiSelected !== null);
+    return () => onBottomActionBarVisibilityChange(false);
+  }, [multiSelected, onBottomActionBarVisibilityChange]);
 
   const navigateToCwd = useCallback((newCwd: string) => {
     const nextHash = encodeDirectoryHash(newCwd);
@@ -269,6 +292,7 @@ function Main({
             multiSelected={multiSelected}
             onMultiSelect={handleMultiSelect}
             emptyMessage={<Centered>No files or folders</Centered>}
+            bottomPadding={fileBrowserBottomPadding}
           />
         </DropZone>
       )}
@@ -364,6 +388,7 @@ function FileBrowserContent({
   multiSelected,
   onMultiSelect,
   emptyMessage,
+  bottomPadding,
 }: {
   groups: FileGroup[];
   viewMode: ViewMode;
@@ -372,6 +397,7 @@ function FileBrowserContent({
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   emptyMessage: React.ReactNode;
+  bottomPadding: React.CSSProperties["paddingBottom"];
 }) {
   const fileCount = groups.reduce(
     (total, group) => total + group.files.length,
@@ -388,13 +414,13 @@ function FileBrowserContent({
         multiSelected={multiSelected}
         onMultiSelect={onMultiSelect}
         showDetailsHeader
-        withBottomPadding
+        bottomPadding={bottomPadding}
       />
     );
   }
 
   return (
-    <Box sx={{ paddingBottom: "48px" }}>
+    <Box sx={{ paddingBottom: bottomPadding }}>
       {viewMode === ViewMode.Details && <FileDetailsHeader />}
       {groups.map((group) => (
         <FileGroupSection
@@ -408,7 +434,7 @@ function FileBrowserContent({
             multiSelected={multiSelected}
             onMultiSelect={onMultiSelect}
             showDetailsHeader={false}
-            withBottomPadding={false}
+            bottomPadding={0}
           />
         </FileGroupSection>
       ))}
@@ -426,7 +452,7 @@ function FileView({
   multiSelected,
   onMultiSelect,
   showDetailsHeader,
-  withBottomPadding,
+  bottomPadding,
 }: {
   files: FileItem[];
   viewMode: ViewMode;
@@ -434,17 +460,19 @@ function FileView({
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   showDetailsHeader: boolean;
-  withBottomPadding: boolean;
+  bottomPadding: React.CSSProperties["paddingBottom"];
 }) {
   if (viewMode === ViewMode.Details) {
     return (
-      <FileDetailsView
-        files={files}
-        onCwdChange={onCwdChange}
-        multiSelected={multiSelected}
-        onMultiSelect={onMultiSelect}
-        showHeader={showDetailsHeader}
-      />
+      <Box sx={{ paddingBottom: bottomPadding }}>
+        <FileDetailsView
+          files={files}
+          onCwdChange={onCwdChange}
+          multiSelected={multiSelected}
+          onMultiSelect={onMultiSelect}
+          showHeader={showDetailsHeader}
+        />
+      </Box>
     );
   }
 
@@ -454,7 +482,7 @@ function FileView({
       onCwdChange={onCwdChange}
       multiSelected={multiSelected}
       onMultiSelect={onMultiSelect}
-      withBottomPadding={withBottomPadding}
+      bottomPadding={bottomPadding}
     />
   );
 }

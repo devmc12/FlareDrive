@@ -157,6 +157,36 @@ export async function blobDigest(blob: Blob) {
 export const SIZE_LIMIT = 100 * 1000 * 1000;
 
 /**
+ * Checks whether an error was raised by request cancellation
+ * @param error Error thrown by fetch, XHR, or transfer helpers
+ * @returns Whether the error represents an abort
+ */
+export function isAbortError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "AbortError"
+  );
+}
+
+/**
+ * Creates the shared cancellation error used by upload helpers
+ * @returns DOM abort error
+ */
+function createAbortError() {
+  return new DOMException("Upload canceled", "AbortError");
+}
+
+/**
+ * Stops execution when a caller has canceled the active transfer
+ * @param signal Optional cancellation signal for the transfer
+ */
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw createAbortError();
+}
+
+/**
  * Sends a request through XMLHttpRequest so upload progress is observable
  * @param url Target request URL
  * @param requestInit Fetch-like request options plus upload progress callback
@@ -169,7 +199,36 @@ function xhrFetch(
   }
 ) {
   return new Promise<Response>((resolve, reject) => {
+    const signal = requestInit.signal ?? undefined;
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
     const xhr = new XMLHttpRequest();
+    let settled = false;
+
+    const cleanup = () => {
+      signal?.removeEventListener("abort", abortRequest);
+    };
+
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+
+    const rejectWithAbort = () => {
+      finish(() => reject(createAbortError()));
+    };
+
+    const abortRequest = () => {
+      xhr.abort();
+      rejectWithAbort();
+    };
+
+    signal?.addEventListener("abort", abortRequest, { once: true });
     xhr.upload.onprogress = requestInit.onUploadProgress ?? null;
     xhr.open(
       requestInit.method ?? "GET",
@@ -182,6 +241,7 @@ function xhrFetch(
         .getAllResponseHeaders()
         .trim()
         .split("\r\n")
+        .filter(Boolean)
         .reduce(
           (acc, header) => {
             const [key, value] = header.split(": ");
@@ -190,16 +250,37 @@ function xhrFetch(
           },
           {} as Record<string, string>
         );
-      resolve(new Response(xhr.responseText, { status: xhr.status, headers }));
+      finish(() =>
+        resolve(new Response(xhr.responseText, { status: xhr.status, headers }))
+      );
     };
-    xhr.onerror = reject;
+    xhr.onerror = () => finish(() => reject(new Error("Upload failed")));
+    xhr.onabort = rejectWithAbort;
     if (
       requestInit.body instanceof Blob ||
       typeof requestInit.body === "string"
     ) {
       xhr.send(requestInit.body);
+    } else {
+      xhr.send();
     }
   });
+}
+
+/**
+ * Aborts an unfinished multipart upload on the backend
+ * @param key Target object key
+ * @param uploadId R2 multipart upload id
+ */
+async function abortMultipartUpload(key: string, uploadId: string) {
+  const searchParams = new URLSearchParams({ uploadId });
+  try {
+    await fetch(`${WEBDAV_ENDPOINT}${encodeKey(key)}?${searchParams}`, {
+      method: "DELETE",
+    });
+  } catch {
+    console.log(`Abort multipart upload ${uploadId} failed`);
+  }
 }
 
 /**
@@ -218,72 +299,108 @@ export async function multipartUpload(
       loaded: number;
       total: number;
     }) => void;
+    signal?: AbortSignal;
   }
 ) {
   const headers = options?.headers || {};
   headers["content-type"] = file.type;
+  const signal = options?.signal;
 
-  const uploadResponse = await fetch(
-    `${WEBDAV_ENDPOINT}${encodeKey(key)}?uploads`,
-    {
-      headers,
-      method: "POST",
-    }
-  );
-  const { uploadId } = await uploadResponse.json<{ uploadId: string }>();
-  const totalChunks = Math.ceil(file.size / SIZE_LIMIT);
+  let uploadId: string | null = null;
+  try {
+    throwIfAborted(signal);
+    const uploadResponse = await fetch(
+      `${WEBDAV_ENDPOINT}${encodeKey(key)}?uploads`,
+      {
+        headers,
+        method: "POST",
+        signal,
+      }
+    );
+    ({ uploadId } = await uploadResponse.json<{ uploadId: string }>());
+    if (!uploadId) throw new Error("Missing multipart upload id");
+    const activeUploadId = uploadId;
+    throwIfAborted(signal);
 
-  const limit = pLimit(2);
-  const parts = Array.from({ length: totalChunks }, (_, i) => i + 1);
-  const partsLoaded = Array.from({ length: totalChunks + 1 }, () => 0);
-  const promises = parts.map((i) =>
-    limit(async () => {
-      const chunk = file.slice((i - 1) * SIZE_LIMIT, i * SIZE_LIMIT);
-      const searchParams = new URLSearchParams({
-        partNumber: i.toString(),
-        uploadId,
-      });
-      const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(key)}?${searchParams}`;
-      if (i === limit.concurrency)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+    const totalChunks = Math.ceil(file.size / SIZE_LIMIT);
+    const limit = pLimit(2);
+    const parts = Array.from({ length: totalChunks }, (_, i) => i + 1);
+    const partsLoaded = Array.from({ length: totalChunks + 1 }, () => 0);
+    const clearPendingParts = () => limit.clearQueue();
+    signal?.addEventListener("abort", clearPendingParts, { once: true });
 
-      const uploadPart = () =>
-        xhrFetch(uploadUrl, {
-          method: "PUT",
-          headers,
-          body: chunk,
-          onUploadProgress: (progressEvent) => {
-            partsLoaded[i] = progressEvent.loaded;
-            options?.onUploadProgress?.({
-              loaded: partsLoaded.reduce((a, b) => a + b),
-              total: file.size,
-            });
-          },
+    const promises = parts.map((i) =>
+      limit(async () => {
+        throwIfAborted(signal);
+        const chunk = file.slice((i - 1) * SIZE_LIMIT, i * SIZE_LIMIT);
+        const searchParams = new URLSearchParams({
+          partNumber: i.toString(),
+          uploadId: activeUploadId,
         });
+        const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(key)}?${searchParams}`;
+        if (i === limit.concurrency) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          throwIfAborted(signal);
+        }
 
-      const retryReducer = (acc: Promise<Response>) =>
-        acc
-          .then((res) => {
-            const retryAfter = res.headers.get("retry-after");
-            if (!retryAfter) return res;
-            return uploadPart();
-          })
-          .catch(uploadPart);
-      const response = await [1, 2].reduce(retryReducer, uploadPart());
-      return { partNumber: i, etag: response.headers.get("etag")! };
-    })
-  );
-  const uploadedParts = await Promise.all(promises);
-  const completeParams = new URLSearchParams({ uploadId });
-  const response = await fetch(
-    `${WEBDAV_ENDPOINT}${encodeKey(key)}?${completeParams}`,
-    {
-      method: "POST",
-      body: JSON.stringify({ parts: uploadedParts }),
+        const uploadPart = () =>
+          xhrFetch(uploadUrl, {
+            method: "PUT",
+            headers,
+            body: chunk,
+            signal,
+            onUploadProgress: (progressEvent) => {
+              partsLoaded[i] = progressEvent.loaded;
+              options?.onUploadProgress?.({
+                loaded: partsLoaded.reduce((a, b) => a + b),
+                total: file.size,
+              });
+            },
+          });
+
+        const retryReducer = (acc: Promise<Response>) =>
+          acc
+            .then((res) => {
+              throwIfAborted(signal);
+              const retryAfter = res.headers.get("retry-after");
+              if (!retryAfter) return res;
+              return uploadPart();
+            })
+            .catch((error) => {
+              if (isAbortError(error) || signal?.aborted) throw error;
+              throwIfAborted(signal);
+              return uploadPart();
+            });
+        const response = await [1, 2].reduce(retryReducer, uploadPart());
+        return { partNumber: i, etag: response.headers.get("etag")! };
+      })
+    );
+
+    try {
+      const uploadedParts = await Promise.all(promises);
+      throwIfAborted(signal);
+      const completeParams = new URLSearchParams({
+        uploadId: activeUploadId,
+      });
+      const response = await fetch(
+        `${WEBDAV_ENDPOINT}${encodeKey(key)}?${completeParams}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ parts: uploadedParts }),
+          signal,
+        }
+      );
+      if (!response.ok) throw new Error(await response.text());
+      return response;
+    } finally {
+      signal?.removeEventListener("abort", clearPendingParts);
     }
-  );
-  if (!response.ok) throw new Error(await response.text());
-  return response;
+  } catch (error) {
+    if (uploadId && (isAbortError(error) || signal?.aborted)) {
+      await abortMultipartUpload(key, uploadId);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -333,13 +450,16 @@ export async function createFolder(cwd: string) {
 export async function processTransferTask({
   task,
   onTaskProgress,
+  signal,
 }: {
   task: TransferTask;
   onTaskProgress?: (event: { loaded: number; total: number }) => void;
+  signal?: AbortSignal;
 }) {
   const { remoteKey, file } = task;
   if (task.type !== "upload" || !file) throw new Error("Invalid task");
   let thumbnailDigest = null;
+  throwIfAborted(signal);
 
   if (
     file.type.startsWith("image/") ||
@@ -348,29 +468,36 @@ export async function processTransferTask({
   ) {
     try {
       const thumbnailBlob = await generateThumbnail(file);
+      throwIfAborted(signal);
       const digestHex = await blobDigest(thumbnailBlob);
+      throwIfAborted(signal);
 
       const thumbnailUploadUrl = `${WEBDAV_ENDPOINT}${THUMBNAIL_PATH_PREFIX}${digestHex}.png`;
       try {
         await fetch(thumbnailUploadUrl, {
           method: "PUT",
           body: thumbnailBlob,
+          signal,
         });
         thumbnailDigest = digestHex;
-      } catch {
+      } catch (error) {
+        if (isAbortError(error)) throw error;
         console.log(`Upload ${digestHex}.png failed`);
       }
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) throw error;
       console.log(`Generate thumbnail failed`);
     }
   }
 
   const headers: { "fd-thumbnail"?: string } = {};
   if (thumbnailDigest) headers["fd-thumbnail"] = thumbnailDigest;
+  throwIfAborted(signal);
   if (file.size >= SIZE_LIMIT) {
     return await multipartUpload(remoteKey, file, {
       headers,
       onUploadProgress: onTaskProgress,
+      signal,
     });
   } else {
     const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(remoteKey)}`;
@@ -378,6 +505,7 @@ export async function processTransferTask({
       method: "PUT",
       headers,
       body: file,
+      signal,
       onUploadProgress: onTaskProgress,
     });
   }

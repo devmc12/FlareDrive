@@ -207,6 +207,7 @@ function FileIcon({ file }: { file: FileItem }) {
         component="img"
         src={`${WEBDAV_ENDPOINT}${THUMBNAIL_PATH_PREFIX}${file.customMetadata.thumbnail}.png`}
         alt=""
+        draggable={false}
         sx={{
           flexShrink: 0,
           height: 24,
