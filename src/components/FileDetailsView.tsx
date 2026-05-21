@@ -66,62 +66,69 @@ function FileDetailsView({
           </TableHead>
         )}
         <TableBody>
-          {files.map((file) => (
-            <TableRow
-              hover
-              key={file.key}
-              selected={multiSelected?.includes(file.key)}
-              onClick={() => {
-                if (multiSelected !== null) {
+          {files.map((file) => {
+            const filename = extractFilename(file.key);
+
+            return (
+              <TableRow
+                hover
+                key={file.key}
+                selected={multiSelected?.includes(file.key)}
+                onClick={() => {
+                  if (multiSelected !== null) {
+                    onMultiSelect(file.key);
+                  } else if (isDirectory(file)) {
+                    onCwdChange(`${file.key}/`);
+                  } else {
+                    window.open(
+                      `${WEBDAV_ENDPOINT}${encodeKey(file.key)}`,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
                   onMultiSelect(file.key);
-                } else if (isDirectory(file)) {
-                  onCwdChange(`${file.key}/`);
-                } else {
-                  window.open(
-                    `${WEBDAV_ENDPOINT}${encodeKey(file.key)}`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  );
-                }
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onMultiSelect(file.key);
-              }}
-              sx={{
-                cursor: "default",
-                userSelect: "none",
-                "&.Mui-selected": {
-                  backgroundColor: "action.selected",
-                },
-              }}>
-              <TableCell>
-                <Box
-                  sx={{
-                    alignItems: "center",
-                    display: "flex",
-                    gap: 1,
-                    minWidth: 0,
-                  }}>
-                  <FileIcon file={file} />
+                }}
+                sx={{
+                  cursor: "default",
+                  userSelect: "none",
+                  "&.Mui-selected": {
+                    backgroundColor: "action.selected",
+                  },
+                }}>
+                <TableCell>
                   <Box
-                    component="span"
                     sx={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      alignItems: "center",
+                      display: "flex",
+                      gap: 1,
+                      minWidth: 0,
                     }}>
-                    {extractFilename(file.key)}
+                    <FileIcon file={file} />
+                    <Box
+                      component="span"
+                      title={filename}
+                      sx={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}>
+                      {filename}
+                    </Box>
                   </Box>
-                </Box>
-              </TableCell>
-              <TableCell>{new Date(file.uploaded).toLocaleString()}</TableCell>
-              <TableCell>{getFileTypeLabel(file)}</TableCell>
-              <TableCell>
-                {isDirectory(file) ? "" : humanReadableSize(file.size)}
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+                <TableCell>
+                  {new Date(file.uploaded).toLocaleString()}
+                </TableCell>
+                <TableCell>{getFileTypeLabel(file)}</TableCell>
+                <TableCell>
+                  {isDirectory(file) ? "" : humanReadableSize(file.size)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>
