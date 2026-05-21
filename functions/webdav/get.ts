@@ -1,5 +1,5 @@
+import { type RequestHandlerParams } from "./types";
 import { notFound } from "./utils";
-import { RequestHandlerParams } from "./utils";
 
 export async function handleRequestGet({
   bucket,

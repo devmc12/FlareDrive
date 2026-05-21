@@ -1,4 +1,5 @@
-import { RequestHandlerParams, ROOT_OBJECT } from "./utils";
+import { ROOT_OBJECT } from "./constants";
+import { type RequestHandlerParams } from "./types";
 
 export async function handleRequestMkcol({
   bucket,

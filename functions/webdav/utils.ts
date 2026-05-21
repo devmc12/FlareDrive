@@ -1,80 +1,26 @@
+import { READ_METHODS, SHA256_HEX_LENGTH, WEBDAV_ENDPOINT } from "./constants";
+import {
+  type BasicCredentials,
+  type WebDavAccessToken,
+  type WebDavAuthEnv,
+  type WebDavAuthResult,
+} from "./types";
+
 /**
  * Date: 2024-07-08
  * Time: 11:29
  * Desc: Provides WebDAV route helpers, listing helpers, and request authorization
  */
 
-export interface RequestHandlerParams {
-  bucket: R2Bucket;
-  path: string;
-  request: Request;
-}
-
-// Public WebDAV route mounted by Cloudflare Pages Functions
-export const WEBDAV_ENDPOINT = "/webdav/";
-
-// Synthetic root directory object used for PROPFIND responses
-export const ROOT_OBJECT = {
-  key: "",
-  uploaded: new Date(),
-  httpMetadata: {
-    contentType: "application/x-directory",
-    contentDisposition: undefined,
-    contentLanguage: undefined,
-  },
-  customMetadata: undefined,
-  size: 0,
-  etag: undefined,
-};
-
-type WebDavAccess = "ro" | "rw";
-
-type BasicCredentials = {
-  username: string;
-  password: string;
-};
-
-type WebDavAccessToken = {
-  username: string;
-  passwordSha256: string;
-  access: WebDavAccess;
-  prefix: string;
-};
-
-type WebDavAuthContext = {
-  kind: "admin" | "public" | "token";
-  access: WebDavAccess;
-  prefix: string;
-  username?: string;
-};
-
-export type WebDavAuthEnv = {
-  WEBDAV_USERNAME?: string;
-  WEBDAV_PASSWORD?: string;
-  WEBDAV_ACCESS_TOKENS?: string;
-  WEBDAV_PUBLIC_READ?: string;
-};
-
-type WebDavAuthResult =
-  | {
-      ok: true;
-      context: WebDavAuthContext;
-    }
-  | {
-      ok: false;
-      response: Response;
-    };
-
-// Methods allowed for read-only WebDAV access
-const READ_METHODS = new Set(["GET", "HEAD", "PROPFIND"]);
-
-// Hex encoded SHA-256 digest length
-const SHA256_HEX_LENGTH = 64;
-
 export function notFound() {
   return new Response("Not found", { status: 404 });
 }
 
+/**
+ * Extracts the R2 bucket binding and decoded object key from a Pages context
+ * @param context Cloudflare Pages Function context
+ * @returns Bucket binding and decoded WebDAV object key
+ */
 export function parseBucketPath(context: any): [R2Bucket, string] {
   const { request, env, params } = context;
   const url = new URL(request.url);
@@ -86,6 +32,10 @@ export function parseBucketPath(context: any): [R2Bucket, string] {
   return [env[driveid] || env["BUCKET"], path];
 }
 
+/**
+ * Builds a Basic Auth challenge response for WebDAV clients
+ * @returns Unauthorized response with a WebDAV Basic realm
+ */
 function unauthorized() {
   return new Response("Unauthorized", {
     status: 401,
@@ -93,14 +43,30 @@ function unauthorized() {
   });
 }
 
+/**
+ * Builds a forbidden response for authenticated requests outside their scope
+ * @param message Optional response body
+ * @returns Forbidden response
+ */
 function forbidden(message = "Forbidden") {
   return new Response(message, { status: 403 });
 }
 
+/**
+ * Normalizes WebDAV auth paths before prefix comparison
+ * @param path Raw or decoded WebDAV object key
+ * @returns Path without leading or trailing slashes
+ */
 function normalizeAuthPath(path: string) {
   return path.replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
+/**
+ * Checks whether a requested object key is within a configured auth prefix
+ * @param path Decoded WebDAV object key requested by the client
+ * @param prefix Token prefix from WEBDAV_ACCESS_TOKENS
+ * @returns True when the path is the prefix itself or one of its children
+ */
 function isPathWithinPrefix(path: string, prefix: string) {
   const normalizedPath = normalizeAuthPath(path);
   const normalizedPrefix = normalizeAuthPath(prefix);
@@ -113,6 +79,11 @@ function isPathWithinPrefix(path: string, prefix: string) {
   );
 }
 
+/**
+ * Parses username and password from a WebDAV Basic Auth header
+ * @param request Incoming WebDAV request
+ * @returns Parsed credentials or null when the header is missing or invalid
+ */
 function parseBasicCredentials(request: Request): BasicCredentials | null {
   const auth = request.headers.get("Authorization");
   const match = auth?.match(/^Basic\s+(.+)$/i);
@@ -132,6 +103,12 @@ function parseBasicCredentials(request: Request): BasicCredentials | null {
   }
 }
 
+/**
+ * Compares two strings without short-circuiting on the first mismatch
+ * @param a First string
+ * @param b Second string
+ * @returns True when both strings have identical content
+ */
 function timingSafeEqual(a: string, b: string) {
   if (a.length !== b.length) return false;
 
@@ -143,6 +120,11 @@ function timingSafeEqual(a: string, b: string) {
   return mismatch === 0;
 }
 
+/**
+ * Calculates a SHA-256 digest for a raw token secret
+ * @param value Raw token secret supplied by the client
+ * @returns Lowercase hex encoded SHA-256 digest
+ */
 async function sha256Hex(value: string) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -154,6 +136,11 @@ async function sha256Hex(value: string) {
     .join("");
 }
 
+/**
+ * Parses and validates access token definitions from the environment
+ * @param value Raw WEBDAV_ACCESS_TOKENS JSON string
+ * @returns Normalized token definitions
+ */
 function parseAccessTokens(value?: string): WebDavAccessToken[] {
   if (!value?.trim()) return [];
 
@@ -189,6 +176,11 @@ function parseAccessTokens(value?: string): WebDavAccessToken[] {
   });
 }
 
+/**
+ * Extracts a WebDAV destination key from COPY and MOVE requests
+ * @param request Incoming WebDAV COPY or MOVE request
+ * @returns Decoded destination object key or null when the header is invalid
+ */
 function parseDestinationPath(request: Request) {
   const destinationHeader = request.headers.get("Destination");
   if (!destinationHeader) return null;
@@ -208,6 +200,12 @@ function parseDestinationPath(request: Request) {
   }
 }
 
+/**
+ * Finds the token matching a Basic Auth username and raw token secret
+ * @param tokens Parsed access token definitions
+ * @param credentials Basic Auth credentials supplied by the client
+ * @returns Matching token definition or undefined
+ */
 async function findMatchingToken(
   tokens: WebDavAccessToken[],
   credentials: BasicCredentials
@@ -312,6 +310,13 @@ export async function authorizeWebDavRequest({
   };
 }
 
+/**
+ * Lists R2 objects while hiding internal FlareDrive objects from clients
+ * @param bucket R2 bucket binding
+ * @param prefix Optional object key prefix
+ * @param isRecursive Whether to include nested descendants
+ * @returns Async iterable of visible R2 objects
+ */
 export async function* listAll(
   bucket: R2Bucket,
   prefix?: string,

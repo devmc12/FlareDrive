@@ -1,5 +1,5 @@
-import { notFound } from "./utils";
-import { listAll, RequestHandlerParams } from "./utils";
+import { type RequestHandlerParams } from "./types";
+import { listAll, notFound } from "./utils";
 
 export async function handleRequestDelete({
   bucket,

@@ -7,13 +7,8 @@ import { handleRequestMove } from "./move";
 import { handleRequestPost } from "./post";
 import { handleRequestPropfind } from "./propfind";
 import { handleRequestPut } from "./put";
-import {
-  authorizeWebDavRequest,
-  notFound,
-  parseBucketPath,
-  type RequestHandlerParams,
-  type WebDavAuthEnv,
-} from "./utils";
+import { type RequestHandlerParams, type WebDavAuthEnv } from "./types";
+import { authorizeWebDavRequest, notFound, parseBucketPath } from "./utils";
 
 /**
  * Date: 2024-07-08

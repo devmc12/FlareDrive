@@ -51,9 +51,8 @@ ending the session unless the user explicitly asks to keep it running.
 
 - Keep active frontend source under `/src`
 - Keep Cloudflare Pages Functions under `/functions`
-- Put frontend shared tools and reusable cross-runtime helpers under `/utils`
+- Put frontend shared tools and reusable cross-runtime helpers under `/src/app/utils.ts`
 - Keep WebDAV-only helper logic in `/functions/webdav/utils.ts`
-- Do not create a new shared utility directory under `/src`
 
 ## Commenting Rules
 

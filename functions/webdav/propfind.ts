@@ -1,9 +1,6 @@
-import {
-  listAll,
-  RequestHandlerParams,
-  ROOT_OBJECT,
-  WEBDAV_ENDPOINT,
-} from "./utils";
+import { ROOT_OBJECT, WEBDAV_ENDPOINT } from "./constants";
+import { type RequestHandlerParams } from "./types";
+import { listAll } from "./utils";
 
 type DavProperties = {
   creationdate: string | undefined;

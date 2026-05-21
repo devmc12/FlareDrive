@@ -1,6 +1,6 @@
-import { RequestHandlerParams } from "./utils";
 import { handleRequestCopy } from "./copy";
 import { handleRequestDelete } from "./delete";
+import { type RequestHandlerParams } from "./types";
 
 export async function handleRequestMove({
   bucket,
