@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Box,
   Grid,
@@ -6,6 +5,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from "@mui/material";
+import React from "react";
 import MimeIcon from "./MimeIcon";
 import { humanReadableSize } from "./app/utils";
 
@@ -66,8 +66,7 @@ function FileGrid({
               e.preventDefault();
               onMultiSelect(file.key);
             }}
-            sx={{ userSelect: "none" }}
-          >
+            sx={{ userSelect: "none" }}>
             <ListItemIcon>
               {file.customMetadata?.thumbnail ? (
                 <img
@@ -93,12 +92,12 @@ function FileGrid({
               secondary={
                 <React.Fragment>
                   <Box
+                    component="span"
                     sx={{
                       display: "inline-block",
                       minWidth: "160px",
                       marginRight: 1,
-                    }}
-                  >
+                    }}>
                     {new Date(file.uploaded).toLocaleString()}
                   </Box>
                   {!isDirectory(file) && humanReadableSize(file.size)}

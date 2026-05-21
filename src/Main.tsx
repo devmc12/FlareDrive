@@ -1,5 +1,5 @@
 // Main.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Home as HomeIcon, NoteAdd as NoteAddIcon } from "@mui/icons-material";
 import {
   Box,
   Breadcrumbs,
@@ -8,12 +8,12 @@ import {
   Link,
   Typography,
 } from "@mui/material";
-import { Home as HomeIcon, NoteAdd as NoteAddIcon } from "@mui/icons-material";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import FileGrid, { encodeKey, FileItem, isDirectory } from "./FileGrid";
 import MultiSelectToolbar from "./MultiSelectToolbar";
-import UploadDrawer, { UploadFab } from "./UploadDrawer";
 import TextPadDrawer from "./TextPadDrawer";
+import UploadDrawer, { UploadFab } from "./UploadDrawer";
 import { copyPaste, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
 
@@ -26,8 +26,7 @@ function Centered({ children }: { children: React.ReactNode }) {
         justifyContent: "center",
         alignItems: "center",
         height: "100%",
-      }}
-    >
+      }}>
       {children}
     </Box>
   );
@@ -59,8 +58,7 @@ function PathBreadcrumb({
             component="button"
             onClick={() => {
               onCwdChange(parts.slice(0, index + 1).join("/") + "/");
-            }}
-          >
+            }}>
             {part}
           </Link>
         )
@@ -101,8 +99,7 @@ function DropZone({
         e.preventDefault();
         onDrop(e.dataTransfer.files);
         setDragging(false);
-      }}
-    >
+      }}>
       {children}
     </Box>
   );
@@ -190,8 +187,7 @@ function Main({
             uploadEnqueue(
               ...Array.from(files).map((file) => ({ file, basedir: cwd }))
             );
-          }}
-        >
+          }}>
           <FileGrid
             files={filteredFiles}
             onCwdChange={(newCwd: string) => setCwd(newCwd)}
@@ -214,8 +210,7 @@ function Main({
               right: 24,
               zIndex: 999,
             }}
-            onClick={() => setShowTextPadDrawer(true)}
-          >
+            onClick={() => setShowTextPadDrawer(true)}>
             Open TextPad
           </Button>
         </>
