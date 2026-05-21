@@ -5,3 +5,7 @@ WEBDAV_USERNAME="admin"
 
 # WebDAV Basic Auth password checked by the backend
 WEBDAV_PASSWORD="admin"
+
+# Optional limited WebDAV credentials for clients you do not fully trust
+# Uncomment and replace the hash with the SHA-256 of the raw token secret
+# WEBDAV_ACCESS_TOKENS='[{"username":"phone","passwordSha256":"<sha256-hex>","access":"rw","prefix":"photos/phone/"},{"username":"reader","passwordSha256":"<sha256-hex>","access":"ro","prefix":"shared/"}]'

@@ -11,6 +11,8 @@ Free serverless backend with a limit of 100,000 invocation requests per day.
 - Search files
 - Image/video/PDF thumbnails
 - WebDAV endpoint
+- Scoped WebDAV access tokens
+- Vite-based frontend
 - Drag and drop upload
 
 ## Usage
@@ -33,6 +35,10 @@ WEBDAV_USERNAME="admin"
 
 # WebDAV Basic Auth password checked by the backend
 WEBDAV_PASSWORD="admin"
+
+# Optional limited WebDAV credentials for clients you do not fully trust
+# Uncomment and replace the hash with the SHA-256 of the raw token secret
+# WEBDAV_ACCESS_TOKENS='[{"username":"phone","passwordSha256":"<sha256-hex>","access":"rw","prefix":"photos/phone/"},{"username":"reader","passwordSha256":"<sha256-hex>","access":"ro","prefix":"shared/"}]'
 ```
 
 Start the local app:
@@ -57,6 +63,24 @@ The frontend does not send development Basic Auth headers automatically. Visit
 API requests with an explicit Authorization header when authentication is
 required.
 
+Generate a token hash with Node.js:
+
+```bash
+node -e "const crypto=require('crypto'); console.log(crypto.createHash('sha256').update(process.argv[1]).digest('hex'))" "raw-token-secret"
+```
+
+Access token fields:
+
+- `username`: the username entered in the WebDAV client
+- `passwordSha256`: the SHA-256 hash of the raw token secret
+- `access`: `ro` for `GET`, `HEAD`, and `PROPFIND`; `rw` for all supported
+  WebDAV methods
+- `prefix`: the R2 key prefix the client can access
+
+Clients using a limited token should connect directly to the allowed prefix,
+such as `https://<your-domain.com>/webdav/photos/phone/`. The server rejects
+requests outside that prefix, including `COPY` and `MOVE` destinations.
+
 For a production-like local run without Vite HMR, use:
 
 ```bash
@@ -76,6 +100,7 @@ Steps:
 1. Fork this project and connect your fork with Cloudflare Pages
    - Select `Docusaurus` framework preset
    - Set `WEBDAV_USERNAME` and `WEBDAV_PASSWORD`
+   - (Optional) Set `WEBDAV_ACCESS_TOKENS` to issue limited client credentials
    - (Optional) Set `WEBDAV_PUBLIC_READ` to `1` to enable public read
 2. After initial deployment, bind your R2 bucket to `BUCKET` variable
 3. Retry deployment in `Deployments` page to apply the changes
@@ -92,7 +117,11 @@ npx wrangler pages deploy build
 
 You can use any client (such as [Cx File Explorer](https://play.google.com/store/apps/details?id=com.cxinventor.file.explorer), [BD File Manager](https://play.google.com/store/apps/details?id=com.liuzho.file.explorer))
 that supports the WebDAV protocol to access your files.
-Fill the endpoint URL as `https://<your-domain.com>/webdav` and use the username and password you set.
+Fill the endpoint URL as `https://<your-domain.com>/webdav` and use the admin
+username and password you set. For a limited access token, fill the endpoint URL
+with the token prefix, such as
+`https://<your-domain.com>/webdav/photos/phone/`, then use the token username
+and raw token secret.
 
 However, the standard WebDAV protocol does not support large file (≥128MB) uploads due to the limitation of Cloudflare Workers.
 You must upload large files through the web interface which supports chunked uploads.

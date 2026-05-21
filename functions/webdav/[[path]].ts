@@ -1,14 +1,25 @@
-import { notFound, parseBucketPath } from "./utils";
 import { handleRequestCopy } from "./copy";
 import { handleRequestDelete } from "./delete";
 import { handleRequestGet } from "./get";
 import { handleRequestHead } from "./head";
 import { handleRequestMkcol } from "./mkcol";
 import { handleRequestMove } from "./move";
+import { handleRequestPost } from "./post";
 import { handleRequestPropfind } from "./propfind";
 import { handleRequestPut } from "./put";
-import { RequestHandlerParams } from "./utils";
-import { handleRequestPost } from "./post";
+import {
+  authorizeWebDavRequest,
+  notFound,
+  parseBucketPath,
+  type RequestHandlerParams,
+  type WebDavAuthEnv,
+} from "./utils";
+
+/**
+ * Date: 2024-07-08
+ * Time: 11:29
+ * Desc: Routes authenticated WebDAV requests to Cloudflare Pages handlers
+ */
 
 async function handleRequestOptions() {
   return new Response(null, {
@@ -23,6 +34,7 @@ async function handleMethodNotAllowed() {
   return new Response(null, { status: 405 });
 }
 
+// Supported WebDAV method handlers
 const HANDLERS: Record<
   string,
   (context: RequestHandlerParams) => Promise<Response>
@@ -38,38 +50,17 @@ const HANDLERS: Record<
   DELETE: handleRequestDelete,
 };
 
-export const onRequest: PagesFunction<{
-  WEBDAV_USERNAME: string;
-  WEBDAV_PASSWORD: string;
-  WEBDAV_PUBLIC_READ?: string;
-}> = async function (context) {
+export const onRequest: PagesFunction<WebDavAuthEnv> = async function (
+  context
+) {
   const env = context.env;
   const request: Request = context.request;
   if (request.method === "OPTIONS") return handleRequestOptions();
 
-  const skipAuth =
-    env.WEBDAV_PUBLIC_READ === "1" &&
-    ["GET", "HEAD", "PROPFIND"].includes(request.method);
-
-  if (!skipAuth) {
-    if (!env.WEBDAV_USERNAME || !env.WEBDAV_PASSWORD)
-      return new Response("WebDAV protocol is not enabled", { status: 403 });
-
-    const auth = request.headers.get("Authorization");
-    if (!auth) {
-      return new Response("Unauthorized", {
-        status: 401,
-        headers: { "WWW-Authenticate": `Basic realm="WebDAV"` },
-      });
-    }
-    const expectedAuth = `Basic ${btoa(
-      `${env.WEBDAV_USERNAME}:${env.WEBDAV_PASSWORD}`
-    )}`;
-    if (auth !== expectedAuth)
-      return new Response("Unauthorized", { status: 401 });
-  }
-
   const [bucket, path] = parseBucketPath(context);
+  const auth = await authorizeWebDavRequest({ env, path, request });
+  if (!auth.ok) return auth.response;
+
   if (!bucket) return notFound();
 
   const method: string = (context.request as Request).method;
