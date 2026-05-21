@@ -85,7 +85,7 @@ export async function handleRequestPropfind({
     <propstat>
       <prop>
         ${Object.entries(properties)
-          .filter(([_, value]) => value !== undefined)
+          .filter(([, value]) => value !== undefined)
           .map(([key, value]) => `<${key}>${value}</${key}>`)
           .join("\n")}
       </prop>

@@ -53,7 +53,7 @@ export async function generateThumbnail(file: File) {
   const canvas = document.createElement("canvas");
   canvas.width = THUMBNAIL_SIZE;
   canvas.height = THUMBNAIL_SIZE;
-  var ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d")!;
 
   if (file.type.startsWith("image/")) {
     const image = await new Promise<HTMLImageElement>((resolve) => {
@@ -64,18 +64,25 @@ export async function generateThumbnail(file: File) {
     ctx.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   } else if (file.type === "video/mp4") {
     // Generate thumbnail from video
-    const video = await new Promise<HTMLVideoElement>(
-      async (resolve, reject) => {
-        const video = document.createElement("video");
-        video.muted = true;
-        video.src = URL.createObjectURL(file);
-        setTimeout(() => reject(new Error("Video load timeout")), 2000);
-        await video.play();
-        video.pause();
-        video.currentTime = 0;
-        resolve(video);
-      }
-    );
+    const video = await new Promise<HTMLVideoElement>((resolve, reject) => {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.src = URL.createObjectURL(file);
+      const timeoutId = setTimeout(
+        () => reject(new Error("Video load timeout")),
+        2000
+      );
+
+      video
+        .play()
+        .then(() => {
+          clearTimeout(timeoutId);
+          video.pause();
+          video.currentTime = 0;
+          resolve(video);
+        })
+        .catch(reject);
+    });
     ctx.drawImage(video, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   } else if (file.type === "application/pdf") {
     const pdfjsLib = await import(
@@ -87,7 +94,7 @@ export async function generateThumbnail(file: File) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
     const page = await pdf.getPage(1);
     const { width, height } = page.getViewport({ scale: 1 });
-    var scale = THUMBNAIL_SIZE / Math.max(width, height);
+    const scale = THUMBNAIL_SIZE / Math.max(width, height);
     const viewport = page.getViewport({ scale });
     const renderContext = { canvasContext: ctx, viewport };
     await page.render(renderContext).promise;
@@ -131,11 +138,14 @@ function xhrFetch(
         .getAllResponseHeaders()
         .trim()
         .split("\r\n")
-        .reduce((acc, header) => {
-          const [key, value] = header.split(": ");
-          acc[key] = value;
-          return acc;
-        }, {} as Record<string, string>);
+        .reduce(
+          (acc, header) => {
+            const [key, value] = header.split(": ");
+            acc[key] = value;
+            return acc;
+          },
+          {} as Record<string, string>
+        );
       resolve(new Response(xhr.responseText, { status: xhr.status, headers }));
     };
     xhr.onerror = reject;
@@ -242,7 +252,7 @@ export async function createFolder(cwd: string) {
     const folderKey = `${cwd}${folderName}`;
     const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(folderKey)}`;
     await fetch(uploadUrl, { method: "MKCOL" });
-  } catch (error) {
+  } catch {
     console.log(`Create folder failed`);
   }
 }
@@ -274,10 +284,10 @@ export async function processTransferTask({
           body: thumbnailBlob,
         });
         thumbnailDigest = digestHex;
-      } catch (error) {
+      } catch {
         console.log(`Upload ${digestHex}.png failed`);
       }
-    } catch (error) {
+    } catch {
       console.log(`Generate thumbnail failed`);
     }
   }

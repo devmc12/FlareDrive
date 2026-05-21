@@ -25,7 +25,7 @@ export function parseBucketPath(context: any): [R2Bucket, string] {
   const { request, env, params } = context;
   const url = new URL(request.url);
 
-  const pathSegments = (params.path || []) as String[];
+  const pathSegments = (params.path || []) as string[];
   const path = decodeURIComponent(pathSegments.join("/"));
   const driveid = url.hostname.replace(/\..*/, "");
 
@@ -323,8 +323,9 @@ export async function* listAll(
   isRecursive: boolean = false
 ) {
   let cursor: string | undefined = undefined;
-  do {
-    var r2Objects = await bucket.list({
+
+  for (;;) {
+    const r2Objects = await bucket.list({
       prefix: prefix,
       delimiter: isRecursive ? undefined : "/",
       cursor: cursor,
@@ -335,6 +336,7 @@ export async function* listAll(
     for await (const obj of r2Objects.objects)
       if (!obj.key.startsWith("_$flaredrive$/")) yield obj;
 
-    if (r2Objects.truncated) cursor = r2Objects.cursor;
-  } while (r2Objects.truncated);
+    if (!r2Objects.truncated) break;
+    cursor = r2Objects.cursor;
+  }
 }

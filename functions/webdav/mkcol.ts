@@ -4,7 +4,6 @@ import { type RequestHandlerParams } from "./types";
 export async function handleRequestMkcol({
   bucket,
   path,
-  request,
 }: RequestHandlerParams) {
   // Check if the resource already exists
   const resource = await bucket.head(path);
