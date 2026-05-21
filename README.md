@@ -15,6 +15,54 @@ Free serverless backend with a limit of 100,000 invocation requests per day.
 
 ## Usage
 
+### Local development
+
+Local development runs two separate local servers:
+
+- Frontend: Vite on `http://127.0.0.1:3601`
+- Backend: Cloudflare Pages Functions on `http://127.0.0.1:3602`
+
+Copy `.dev.vars.example` to `.dev.vars` for the local Wrangler Pages Functions
+backend:
+
+```env
+# Copy this file to .dev.vars for the local Wrangler Pages Functions backend
+
+# WebDAV Basic Auth username checked by the backend
+WEBDAV_USERNAME="admin"
+
+# WebDAV Basic Auth password checked by the backend
+WEBDAV_PASSWORD="admin"
+```
+
+Start the local app:
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:3601
+```
+
+The frontend calls `/webdav/` on `http://127.0.0.1:3601`, and Vite proxies
+that path to the backend at `http://127.0.0.1:3602`. Wrangler loads
+`.dev.vars` and binds a local R2 bucket as `BUCKET`. Because browser requests
+stay same-origin on port 3601, local CORS is not required.
+
+The frontend does not send development Basic Auth headers automatically. Visit
+`http://127.0.0.1:3601/webdav/` to complete the browser login prompt, or test
+API requests with an explicit Authorization header when authentication is
+required.
+
+For a production-like local run without Vite HMR, use:
+
+```bash
+npm run dev:preview
+```
+
 ### Installation
 
 Before starting, you should make sure that
@@ -51,8 +99,4 @@ You must upload large files through the web interface which supports chunked upl
 
 ## Acknowledgments
 
-WebDAV related code is based on [r2-webdav](
-  https://github.com/abersheeran/r2-webdav
-) project by [abersheeran](
-  https://github.com/abersheeran
-).
+WebDAV related code is based on [r2-webdav](https://github.com/abersheeran/r2-webdav) project by [abersheeran](https://github.com/abersheeran).

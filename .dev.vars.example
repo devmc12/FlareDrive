@@ -1,0 +1,7 @@
+# Copy this file to .dev.vars for the local Wrangler Pages Functions backend
+
+# WebDAV Basic Auth username checked by the backend
+WEBDAV_USERNAME="admin"
+
+# WebDAV Basic Auth password checked by the backend
+WEBDAV_PASSWORD="admin"

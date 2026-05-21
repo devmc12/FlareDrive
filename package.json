@@ -13,10 +13,12 @@
     "web-vitals": "^5.2.0"
   },
   "scripts": {
-    "start": "vite --host 0.0.0.0 --port 3601",
-    "dev": "vite --host 0.0.0.0 --port 3601",
+    "start": "npm run dev",
+    "dev": "concurrently -k -n frontend,functions -c cyan,green \"npm:dev:frontend\" \"npm:dev:functions\"",
+    "dev:frontend": "vite --host 127.0.0.1 --port 3601 --strictPort",
+    "dev:functions": "wrangler pages dev public --port 3602 --compatibility-date=2026-05-20 --env-file .dev.vars --r2=BUCKET",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 3600"
+    "preview": "vite preview --host 127.0.0.1 --port 3600"
   },
   "browserslist": {
     "production": [
@@ -39,9 +41,11 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^9.2.1",
     "prettier": "^3.8.3",
     "prettier-plugin-organize-imports": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13"
+    "vite": "^8.0.13",
+    "wrangler": "^4.93.0"
   }
 }
