@@ -3,13 +3,18 @@ import React, { forwardRef, useCallback, useMemo } from "react";
 import {
   Camera as CameraIcon,
   CreateNewFolder as CreateNewFolderIcon,
+  FolderOpen as FolderOpenIcon,
   Image as ImageIcon,
   NoteAdd as NoteAddIcon,
   Upload as UploadIcon,
 } from "@mui/icons-material";
 import { Box, Fab, Tooltip } from "@mui/material";
 import { createFolder } from "./app/transfer";
-import { useUploadEnqueue } from "./app/transferQueue";
+import {
+  createUploadSourceFromFiles,
+  pickFolderUploadSource,
+  type UploadSourceSelection,
+} from "./app/uploadSources";
 
 /**
  * Date: 2024-07-10
@@ -112,15 +117,24 @@ function UploadDrawer({
   setOpen,
   cwd,
   onUpload,
+  onUploadSource,
+  onError,
   onOpenTextPad,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
   cwd: string;
   onUpload: () => void;
+  onUploadSource: (source: UploadSourceSelection) => void | Promise<void>;
+  onError: (error: Error) => void;
   onOpenTextPad: () => void;
 }) {
-  const uploadEnqueue = useUploadEnqueue();
+  const handleUploadError = useCallback(
+    (error: unknown) => {
+      onError(error instanceof Error ? error : new Error("Upload failed"));
+    },
+    [onError]
+  );
 
   const handleUpload = useCallback(
     (action: string) => () => {
@@ -139,21 +153,29 @@ function UploadDrawer({
           break;
       }
       input.multiple = true;
-      input.onchange = async () => {
+      input.onchange = () => {
         if (!input.files) return;
         const files = Array.from(input.files);
-        uploadEnqueue(...files.map((file) => ({ file, basedir: cwd })));
-        onUpload();
+        void (async () => {
+          await onUploadSource(createUploadSourceFromFiles(files));
+        })().catch(handleUploadError);
       };
       setOpen(false);
       input.click();
     },
-    [cwd, onUpload, setOpen, uploadEnqueue]
+    [handleUploadError, onUploadSource, setOpen]
   );
 
   const takePhoto = useMemo(() => handleUpload("photo"), [handleUpload]);
   const uploadImage = useMemo(() => handleUpload("image"), [handleUpload]);
   const uploadFile = useMemo(() => handleUpload("file"), [handleUpload]);
+  const pickFolder = useCallback(() => {
+    setOpen(false);
+    void (async () => {
+      const source = await pickFolderUploadSource();
+      if (source) await onUploadSource(source);
+    })().catch(handleUploadError);
+  }, [handleUploadError, onUploadSource, setOpen]);
 
   const actions = useMemo<UploadAction[]>(
     () => [
@@ -173,16 +195,16 @@ function UploadDrawer({
         icon: <CameraIcon />,
         onClick: takePhoto,
         offsetX: 0,
-        offsetY: -176,
-        delay: 70,
+        offsetY: -232,
+        delay: 105,
       },
       {
         label: "Image or video",
         icon: <ImageIcon />,
         onClick: uploadImage,
         offsetX: 0,
-        offsetY: -120,
-        delay: 35,
+        offsetY: -176,
+        delay: 70,
       },
       {
         label: "Create folder",
@@ -197,6 +219,14 @@ function UploadDrawer({
         delay: 35,
       },
       {
+        label: "Pick folder",
+        icon: <FolderOpenIcon />,
+        onClick: pickFolder,
+        offsetX: 0,
+        offsetY: -120,
+        delay: 35,
+      },
+      {
         label: "Upload file",
         icon: <UploadIcon />,
         onClick: uploadFile,
@@ -205,7 +235,16 @@ function UploadDrawer({
         delay: 0,
       },
     ],
-    [cwd, onOpenTextPad, onUpload, setOpen, takePhoto, uploadFile, uploadImage]
+    [
+      cwd,
+      onOpenTextPad,
+      onUpload,
+      pickFolder,
+      setOpen,
+      takePhoto,
+      uploadFile,
+      uploadImage,
+    ]
   );
 
   return (

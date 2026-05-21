@@ -422,6 +422,24 @@ export async function copyPaste(source: string, target: string, move = false) {
 }
 
 /**
+ * Creates a remote folder object for a specific WebDAV key
+ * @param folderKey Folder object key relative to the WebDAV endpoint
+ */
+export async function createRemoteFolder(folderKey: string) {
+  const normalizedFolderKey = folderKey.replace(/\/+$/, "");
+  if (!normalizedFolderKey) return;
+
+  const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(normalizedFolderKey)}`;
+  const response = await fetch(uploadUrl, { method: "MKCOL" });
+  if (response.status === 201 || response.status === 405 || response.ok) {
+    return;
+  }
+
+  const errorText = await response.text();
+  throw new Error(errorText || `Create folder ${normalizedFolderKey} failed`);
+}
+
+/**
  * Prompts for a folder name and creates it inside the current directory
  * @param cwd Current directory key
  */
@@ -434,8 +452,7 @@ export async function createFolder(cwd: string) {
       return;
     }
     const folderKey = `${cwd}${folderName}`;
-    const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(folderKey)}`;
-    await fetch(uploadUrl, { method: "MKCOL" });
+    await createRemoteFolder(folderKey);
   } catch {
     console.log(`Create folder failed`);
   }

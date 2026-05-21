@@ -20,9 +20,14 @@ import {
   type SortDirection,
   type SortField,
 } from "./app/constants";
-import { copyPaste, fetchPath } from "./app/transfer";
+import { copyPaste, createRemoteFolder, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
 import type { FileGroup, FileItem } from "./app/type";
+import {
+  collectDataTransferUploadSource,
+  getUploadDirectories,
+  type UploadSourceSelection,
+} from "./app/uploadSources";
 import {
   compareFiles,
   decodeDirectoryHash,
@@ -103,7 +108,7 @@ function DropZone({
   onDrop,
 }: {
   children: React.ReactNode;
-  onDrop: (files: FileList) => void;
+  onDrop: (dataTransfer: DataTransfer) => void | Promise<void>;
 }) {
   const [dragging, setDragging] = useState(false);
 
@@ -127,7 +132,7 @@ function DropZone({
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
-        onDrop(e.dataTransfer.files);
+        void onDrop(e.dataTransfer);
         setDragging(false);
       }}>
       {children}
@@ -231,6 +236,42 @@ function Main({
     fetchFiles();
   }, [fetchFiles]);
 
+  const handleUploadSource = useCallback(
+    async (source: UploadSourceSelection) => {
+      if (!source.files.length && !source.directories.length) return;
+
+      const directories = getUploadDirectories(source);
+      for (const directory of directories) {
+        await createRemoteFolder(`${cwd}${directory}`);
+      }
+
+      if (source.files.length) {
+        uploadEnqueue(
+          ...source.files.map(({ file, relativePath }) => ({
+            basedir: cwd,
+            file,
+            relativePath,
+          }))
+        );
+      }
+
+      fetchFiles();
+    },
+    [cwd, fetchFiles, uploadEnqueue]
+  );
+
+  const handleDropUpload = useCallback(
+    async (dataTransfer: DataTransfer) => {
+      try {
+        const source = await collectDataTransferUploadSource(dataTransfer);
+        await handleUploadSource(source);
+      } catch (error) {
+        onError(error instanceof Error ? error : new Error("Upload failed"));
+      }
+    },
+    [handleUploadSource, onError]
+  );
+
   useEffect(() => {
     if (!transferQueue.length) return;
     const lastFile = transferQueue[transferQueue.length - 1];
@@ -278,12 +319,7 @@ function Main({
           <CircularProgress />
         </Centered>
       ) : (
-        <DropZone
-          onDrop={(files) => {
-            uploadEnqueue(
-              ...Array.from(files).map((file) => ({ file, basedir: cwd }))
-            );
-          }}>
+        <DropZone onDrop={handleDropUpload}>
           <FileBrowserContent
             groups={displayGroups}
             viewMode={viewMode}
@@ -309,6 +345,8 @@ function Main({
         setOpen={setShowUploadDrawer}
         cwd={cwd}
         onUpload={fetchFiles}
+        onUploadSource={handleUploadSource}
+        onError={onError}
         onOpenTextPad={() => setShowTextPadDrawer(true)}
       />
 

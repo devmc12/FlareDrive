@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { isAbortError, processTransferTask } from "./transfer";
+import { normalizeUploadRelativePath } from "./uploadSources";
 
 /**
  * Date: 2024-07-12
@@ -36,6 +37,12 @@ export interface TransferTask {
   total: number;
   error?: unknown;
 }
+
+export type UploadEnqueueRequest = {
+  basedir: string;
+  file: File;
+  relativePath?: string;
+};
 
 const TransferQueueContext = createContext<TransferTask[]>([]);
 const SetTransferQueueContext = createContext<
@@ -76,26 +83,30 @@ export function useTransferActions() {
 export function useUploadEnqueue() {
   const setTransferTasks = useContext(SetTransferQueueContext);
   return useCallback(
-    (...requests: { basedir: string; file: File }[]) => {
+    (...requests: UploadEnqueueRequest[]) => {
       if (!requests.length) return;
 
       const batchId = createBatchId();
       const batchTotal = requests.length;
       const newTasks = requests.map(
-        ({ basedir, file }, index) =>
-          ({
+        ({ basedir, file, relativePath }, index) => {
+          const uploadPath =
+            normalizeUploadRelativePath(relativePath ?? file.name) || file.name;
+
+          return {
             id: createTransferId(),
             batchId,
             batchIndex: index + 1,
             batchTotal,
             type: "upload",
             status: "pending",
-            name: file.name,
+            name: relativePath ? uploadPath : file.name,
             file,
-            remoteKey: basedir + file.name,
+            remoteKey: basedir + uploadPath,
             loaded: 0,
             total: file.size,
-          }) as TransferTask
+          } as TransferTask;
+        }
       );
 
       setTransferTasks((tasks) => [...tasks, ...newTasks]);
