@@ -275,19 +275,24 @@ function Main({
 
       {multiSelected === null && (
         <>
-          <UploadFab onClick={() => setShowUploadDrawer(true)} />
-          <Button
-            variant="contained"
-            startIcon={<NoteAddIcon />}
-            sx={{
-              position: "fixed",
-              bottom: 90,
-              right: 24,
-              zIndex: 999,
-            }}
-            onClick={() => setShowTextPadDrawer(true)}>
-            Open TextPad
-          </Button>
+          <UploadFab
+            open={showUploadDrawer}
+            onClick={() => setShowUploadDrawer((open) => !open)}
+          />
+          {!showUploadDrawer && (
+            <Button
+              variant="contained"
+              startIcon={<NoteAddIcon />}
+              sx={{
+                position: "fixed",
+                bottom: 90,
+                right: 24,
+                zIndex: 999,
+              }}
+              onClick={() => setShowTextPadDrawer(true)}>
+              Open TextPad
+            </Button>
+          )}
         </>
       )}
 
