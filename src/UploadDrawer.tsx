@@ -4,6 +4,7 @@ import {
   Camera as CameraIcon,
   CreateNewFolder as CreateNewFolderIcon,
   Image as ImageIcon,
+  NoteAdd as NoteAddIcon,
   Upload as UploadIcon,
 } from "@mui/icons-material";
 import { Box, Fab, Tooltip } from "@mui/material";
@@ -20,6 +21,7 @@ type UploadAction = {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
+  offsetX: number;
   offsetY: number;
   delay: number;
 };
@@ -81,7 +83,7 @@ function UploadActionButton({
           position: "absolute",
           bottom: 8,
           transform: open
-            ? `translate(-50%, ${action.offsetY}px) scale(1)`
+            ? `translate(calc(-50% + ${action.offsetX}px), ${action.offsetY}px) scale(1)`
             : "translate(-50%, 0) scale(0.45)",
           transition: theme.transitions.create(
             ["opacity", "transform", "box-shadow"],
@@ -110,11 +112,13 @@ function UploadDrawer({
   setOpen,
   cwd,
   onUpload,
+  onOpenTextPad,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
   cwd: string;
   onUpload: () => void;
+  onOpenTextPad: () => void;
 }) {
   const uploadEnqueue = useUploadEnqueue();
 
@@ -154,23 +158,29 @@ function UploadDrawer({
   const actions = useMemo<UploadAction[]>(
     () => [
       {
+        label: "Open TextPad",
+        icon: <NoteAddIcon />,
+        onClick: () => {
+          setOpen(false);
+          onOpenTextPad();
+        },
+        offsetX: -120,
+        offsetY: 0,
+        delay: 70,
+      },
+      {
         label: "Camera",
         icon: <CameraIcon />,
         onClick: takePhoto,
-        offsetY: -232,
-        delay: 105,
+        offsetX: 0,
+        offsetY: -176,
+        delay: 70,
       },
       {
         label: "Image or video",
         icon: <ImageIcon />,
         onClick: uploadImage,
-        offsetY: -176,
-        delay: 70,
-      },
-      {
-        label: "Upload file",
-        icon: <UploadIcon />,
-        onClick: uploadFile,
+        offsetX: 0,
         offsetY: -120,
         delay: 35,
       },
@@ -182,11 +192,20 @@ function UploadDrawer({
           await createFolder(cwd);
           onUpload();
         },
+        offsetX: -64,
+        offsetY: 0,
+        delay: 35,
+      },
+      {
+        label: "Upload file",
+        icon: <UploadIcon />,
+        onClick: uploadFile,
+        offsetX: 0,
         offsetY: -64,
         delay: 0,
       },
     ],
-    [cwd, onUpload, setOpen, takePhoto, uploadFile, uploadImage]
+    [cwd, onOpenTextPad, onUpload, setOpen, takePhoto, uploadFile, uploadImage]
   );
 
   return (

@@ -1,4 +1,4 @@
-import { Home as HomeIcon, NoteAdd as NoteAddIcon } from "@mui/icons-material";
+import { Home as HomeIcon } from "@mui/icons-material";
 import {
   Box,
   Breadcrumbs,
@@ -298,26 +298,10 @@ function Main({
       )}
 
       {multiSelected === null && (
-        <>
-          <UploadFab
-            open={showUploadDrawer}
-            onClick={() => setShowUploadDrawer((open) => !open)}
-          />
-          {!showUploadDrawer && (
-            <Button
-              variant="contained"
-              startIcon={<NoteAddIcon />}
-              sx={{
-                position: "fixed",
-                bottom: 90,
-                right: 24,
-                zIndex: 999,
-              }}
-              onClick={() => setShowTextPadDrawer(true)}>
-              Open TextPad
-            </Button>
-          )}
-        </>
+        <UploadFab
+          open={showUploadDrawer}
+          onClick={() => setShowUploadDrawer((open) => !open)}
+        />
       )}
 
       <UploadDrawer
@@ -325,6 +309,7 @@ function Main({
         setOpen={setShowUploadDrawer}
         cwd={cwd}
         onUpload={fetchFiles}
+        onOpenTextPad={() => setShowTextPadDrawer(true)}
       />
 
       <TextPadDrawer
