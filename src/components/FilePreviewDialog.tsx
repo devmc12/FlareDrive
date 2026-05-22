@@ -30,14 +30,14 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { unzipSync } from "fflate";
+import { unzipSync, type UnzipFileInfo } from "fflate";
 import {
   lazy,
-  type ReactNode,
   Suspense,
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -56,6 +56,7 @@ import {
   STRUCTURED_PREVIEW_LIMIT,
   TEXT_PREVIEW_LIMIT,
   validatePathName,
+  ZIP_PREVIEW_LIMIT,
 } from "../app/preview";
 import type { FileItem } from "../app/type";
 import { extractFilename, humanReadableSize } from "../app/utils";
@@ -76,7 +77,8 @@ type MarkdownMode = "preview" | "split" | "edit";
 type ZipEntryPreview = {
   name: string;
   size: number;
-  data: Uint8Array;
+  compressedSize: number;
+  compression: number;
 };
 
 const MARKDOWN_MODES: { value: MarkdownMode; label: string }[] = [
@@ -93,10 +95,10 @@ const PresentationPreview = lazy(() => import("./preview/PresentationPreview"));
  * Renders the unified preview and text editing dialog
  */
 function FilePreviewDialog({
-  target,
-  onClose,
-  onSaved,
-}: {
+                             target,
+                             onClose,
+                             onSaved,
+                           }: {
   target: FilePreviewTarget | null;
   onClose: () => void;
   onSaved: () => void;
@@ -108,6 +110,7 @@ function FilePreviewDialog({
   const [textValue, setTextValue] = useState("");
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>("preview");
   const [zipEntries, setZipEntries] = useState<ZipEntryPreview[]>([]);
+  const [zipBlob, setZipBlob] = useState<Blob | null>(null);
   const [wordBlob, setWordBlob] = useState<Blob | null>(null);
   const [textPadName, setTextPadName] = useState("note.txt");
   const [saveBackOpen, setSaveBackOpen] = useState(false);
@@ -135,6 +138,7 @@ function FilePreviewDialog({
     setTextValue("");
     setMarkdownMode("preview");
     setZipEntries([]);
+    setZipBlob(null);
     setWordBlob(null);
     setTextPadName("note.txt");
     setSaveBackOpen(false);
@@ -160,7 +164,11 @@ function FilePreviewDialog({
           setTextValue(await fetchWebDavText(nextFile.key));
           break;
         case PreviewKind.Zip:
-          setZipEntries(await loadZipEntries(nextFile.key));
+        {
+          const zipPreview = await loadZipPreview(nextFile.key);
+          setZipEntries(zipPreview.entries);
+          setZipBlob(zipPreview.blob);
+        }
           break;
         case PreviewKind.Spreadsheet:
           break;
@@ -361,6 +369,7 @@ function FilePreviewDialog({
             setTextValue={setTextValue}
             target={target}
             wordBlob={wordBlob}
+            zipBlob={zipBlob}
             zipEntries={zipEntries}
           />
         </DialogContent>
@@ -392,21 +401,22 @@ function FilePreviewDialog({
  * Renders the body for the active preview mode
  */
 function PreviewContent({
-  file,
-  fileUrl,
-  fullScreen,
-  markdownMode,
-  oversizedFile,
-  previewKind,
-  setMarkdownMode,
-  status,
-  error,
-  textValue,
-  setTextValue,
-  target,
-  wordBlob,
-  zipEntries,
-}: {
+                          file,
+                          fileUrl,
+                          fullScreen,
+                          markdownMode,
+                          oversizedFile,
+                          previewKind,
+                          setMarkdownMode,
+                          status,
+                          error,
+                          textValue,
+                          setTextValue,
+                          target,
+                          wordBlob,
+                          zipBlob,
+                          zipEntries,
+                        }: {
   file: FileItem | null;
   fileUrl: string;
   fullScreen: boolean;
@@ -420,6 +430,7 @@ function PreviewContent({
   setTextValue: (value: string) => void;
   target: FilePreviewTarget | null;
   wordBlob: Blob | null;
+  zipBlob: Blob | null;
   zipEntries: ZipEntryPreview[];
 }) {
   if (status === "loading") {
@@ -518,7 +529,7 @@ function PreviewContent({
         </CenteredPreview>
       );
     case PreviewKind.Zip:
-      return <ZipEntriesView entries={zipEntries} />;
+      return <ZipEntriesView archiveBlob={zipBlob} entries={zipEntries} />;
     case PreviewKind.Spreadsheet:
       return file ? (
         <Suspense fallback={<PreviewLoading />}>
@@ -571,11 +582,11 @@ function PreviewContent({
  * Renders a plain text editing area
  */
 function TextEditor({
-  value,
-  fullScreen,
-  outlined = false,
-  onChange,
-}: {
+                      value,
+                      fullScreen,
+                      outlined = false,
+                      onChange,
+                    }: {
   value: string;
   fullScreen: boolean;
   outlined?: boolean;
@@ -622,12 +633,12 @@ function TextEditor({
  * Renders Markdown preview, split, and edit modes
  */
 function MarkdownEditor({
-  mode,
-  value,
-  fullScreen,
-  onChange,
-  onModeChange,
-}: {
+                          mode,
+                          value,
+                          fullScreen,
+                          onChange,
+                          onModeChange,
+                        }: {
   mode: MarkdownMode;
   value: string;
   fullScreen: boolean;
@@ -714,7 +725,15 @@ function MarkdownEditor({
 /**
  * Renders a list of files inside a ZIP archive
  */
-function ZipEntriesView({ entries }: { entries: ZipEntryPreview[] }) {
+function ZipEntriesView({
+                          archiveBlob,
+                          entries,
+                        }: {
+  archiveBlob: Blob | null;
+  entries: ZipEntryPreview[];
+}) {
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   if (!entries.length) {
     return (
       <CenteredPreview>
@@ -724,36 +743,51 @@ function ZipEntriesView({ entries }: { entries: ZipEntryPreview[] }) {
   }
 
   return (
-    <TableContainer sx={{ flexGrow: 1, minHeight: 0 }}>
-      <Table stickyHeader size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell align="right">Size</TableCell>
-            <TableCell align="right">Download</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {entries.map((entry) => (
-            <TableRow key={entry.name} hover>
-              <TableCell sx={{ wordBreak: "break-word" }}>
-                {entry.name}
-              </TableCell>
-              <TableCell align="right">
-                {humanReadableSize(entry.size)}
-              </TableCell>
-              <TableCell align="right">
-                <IconButton
-                  aria-label={`Download ${entry.name}`}
-                  onClick={() => downloadZipEntry(entry)}>
-                  <DownloadIcon />
-                </IconButton>
-              </TableCell>
+    <Stack spacing={1} sx={{ flexGrow: 1, minHeight: 0 }}>
+      {downloadError && <Alert severity="error">{downloadError}</Alert>}
+      <TableContainer sx={{ flexGrow: 1, minHeight: 0 }}>
+        <Table stickyHeader size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell align="right">Size</TableCell>
+              <TableCell align="right">Download</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+          </TableHead>
+          <TableBody>
+            {entries.map((entry) => (
+              <TableRow key={entry.name} hover>
+                <TableCell sx={{ wordBreak: "break-word" }}>
+                  {entry.name}
+                </TableCell>
+                <TableCell align="right">
+                  {humanReadableSize(entry.size)}
+                </TableCell>
+                <TableCell align="right">
+                  <IconButton
+                    aria-label={`Download ${entry.name}`}
+                    disabled={!archiveBlob}
+                    onClick={() => {
+                      setDownloadError(null);
+                      void downloadZipEntry(archiveBlob, entry).catch(
+                        (error) => {
+                          setDownloadError(
+                            error instanceof Error
+                              ? error.message
+                              : "ZIP entry download failed"
+                          );
+                        }
+                      );
+                    }}>
+                    <DownloadIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Stack>
   );
 }
 
@@ -761,10 +795,10 @@ function ZipEntriesView({ entries }: { entries: ZipEntryPreview[] }) {
  * Renders preview fallback actions for unsupported or oversized files
  */
 function FallbackPreview({
-  file,
-  title,
-  message,
-}: {
+                           file,
+                           title,
+                           message,
+                         }: {
   file: FileItem | null;
   title: string;
   message: string;
@@ -857,14 +891,14 @@ function isFlushPreviewKind(kind: PreviewKind) {
  * Renders the confirmation flow for editing an existing file
  */
 function SaveBackDialog({
-  file,
-  open,
-  saving,
-  error,
-  onClose,
-  onOverwrite,
-  onSaveAs,
-}: {
+                          file,
+                          open,
+                          saving,
+                          error,
+                          onClose,
+                          onOverwrite,
+                          onSaveAs,
+                        }: {
   file: FileItem | null;
   open: boolean;
   saving: boolean;
@@ -879,6 +913,11 @@ function SaveBackDialog({
   );
   const [filename, setFilename] = useState(defaultName);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const trimmedFilename = filename.trim();
+  const sameName = trimmedFilename === defaultName;
+  const saveAsMessage = sameName
+    ? "Save As name must be different from the current file"
+    : validationError;
 
   useEffect(() => {
     if (!open) return;
@@ -893,16 +932,23 @@ function SaveBackDialog({
       return;
     }
 
-    onSaveAs(filename.trim());
+    if (sameName) {
+      setValidationError(
+        "Save As name must be different from the current file"
+      );
+      return;
+    }
+
+    onSaveAs(trimmedFilename);
   };
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth>
       <DialogTitle>Save changes</DialogTitle>
       <DialogContent sx={{ paddingTop: 1 }}>
-        {(error || validationError) && (
+        {(error || saveAsMessage) && (
           <Alert severity="error" sx={{ marginBottom: 2 }}>
-            {validationError || error}
+            {saveAsMessage || error}
           </Alert>
         )}
         <Typography color="text.secondary" sx={{ marginBottom: 2 }}>
@@ -913,17 +959,27 @@ function SaveBackDialog({
           value={filename}
           disabled={saving}
           fullWidth
-          onChange={(event) => setFilename(event.target.value)}
+          onChange={(event) => {
+            setFilename(event.target.value);
+            setValidationError(null);
+          }}
         />
       </DialogContent>
-      <DialogActions>
+      <DialogActions
+        disableSpacing={true}
+        sx={{
+          gap: "8px",
+        }}>
         <Button disabled={saving} onClick={onClose}>
           Cancel
         </Button>
         <Button disabled={saving} onClick={onOverwrite}>
           Overwrite
         </Button>
-        <Button disabled={saving} variant="contained" onClick={handleSaveAs}>
+        <Button
+          disabled={saving || sameName}
+          variant="contained"
+          onClick={handleSaveAs}>
           Save As
         </Button>
       </DialogActions>
@@ -932,28 +988,57 @@ function SaveBackDialog({
 }
 
 /**
- * Loads ZIP archive entries from a WebDAV object
+ * Loads ZIP archive entry metadata from a WebDAV object
  */
-async function loadZipEntries(key: string) {
+async function loadZipPreview(key: string) {
   const blob = await fetchWebDavBlob(key);
-  const entries = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+  const archive = new Uint8Array(await blob.arrayBuffer());
+  const entries: ZipEntryPreview[] = [];
 
-  return Object.entries(entries)
-    .filter(([name]) => !name.endsWith("/"))
-    .sort(([a], [b]) => a.localeCompare(b, [], { numeric: true }))
-    .map(([name, data]) => ({
-      name,
-      size: data.byteLength,
-      data,
-    }));
+  unzipSync(archive, {
+    filter(info: UnzipFileInfo) {
+      if (!info.name.endsWith("/")) {
+        entries.push({
+          name: info.name,
+          size: info.originalSize,
+          compressedSize: info.size,
+          compression: info.compression,
+        });
+      }
+
+      return false;
+    },
+  });
+
+  return {
+    blob,
+    entries: entries.sort((a, b) =>
+      a.name.localeCompare(b.name, [], { numeric: true })
+    ),
+  };
 }
 
 /**
- * Downloads one ZIP entry as a local blob
+ * Extracts and downloads one ZIP entry as a local blob
  */
-function downloadZipEntry(entry: ZipEntryPreview) {
+async function downloadZipEntry(
+  archiveBlob: Blob | null,
+  entry: ZipEntryPreview
+) {
+  if (!archiveBlob) throw new Error("ZIP archive is not ready");
+
+  const archive = new Uint8Array(await archiveBlob.arrayBuffer());
+  const files = unzipSync(archive, {
+    filter(info: UnzipFileInfo) {
+      return info.name === entry.name;
+    },
+  });
+  const data = files[entry.name];
+
+  if (!data) throw new Error(`ZIP entry ${entry.name} was not found`);
+
   const filename = entry.name.split("/").pop() || entry.name;
-  const blob = new Blob([Uint8Array.from(entry.data)]);
+  const blob = new Blob([Uint8Array.from(data)]);
   const url = URL.createObjectURL(blob);
   downloadUrl(url, filename, () => URL.revokeObjectURL(url));
 }
@@ -976,7 +1061,9 @@ function getOversizedMessage(file: FileItem, kind: PreviewKind) {
   const limit =
     kind === PreviewKind.Text || kind === PreviewKind.Markdown
       ? TEXT_PREVIEW_LIMIT
-      : STRUCTURED_PREVIEW_LIMIT;
+      : kind === PreviewKind.Zip
+        ? ZIP_PREVIEW_LIMIT
+        : STRUCTURED_PREVIEW_LIMIT;
 
   return `${humanReadableSize(file.size)} exceeds the ${humanReadableSize(
     limit

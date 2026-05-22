@@ -11,6 +11,9 @@ import { encodeKey, extractFilename } from "./utils";
 // Maximum editable text or Markdown file size for in-browser preview
 export const TEXT_PREVIEW_LIMIT = 2 * 1024 * 1024;
 
+// Maximum ZIP archive size for frontend parsing
+export const ZIP_PREVIEW_LIMIT = 30 * 1024 * 1024;
+
 // Maximum structured binary file size for frontend parsing
 export const STRUCTURED_PREVIEW_LIMIT = 10 * 1024 * 1024;
 
@@ -239,8 +242,11 @@ export function isWithinPreviewLimit(file: FileItem, kind: PreviewKind) {
     return file.size <= TEXT_PREVIEW_LIMIT;
   }
 
+  if (kind === PreviewKind.Zip) {
+    return file.size <= ZIP_PREVIEW_LIMIT;
+  }
+
   if (
-    kind === PreviewKind.Zip ||
     kind === PreviewKind.Spreadsheet ||
     kind === PreviewKind.Word ||
     kind === PreviewKind.Presentation

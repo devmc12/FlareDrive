@@ -49,23 +49,25 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          const normalizedId = id.replace(/\\/g, "/");
-          if (!normalizedId.includes("node_modules")) return undefined;
-
-          const lazyPreviewChunk = LAZY_PREVIEW_VENDOR_CHUNKS.find((chunk) =>
-            isPackageId(normalizedId, chunk.packages)
-          );
-          if (lazyPreviewChunk) {
-            return lazyPreviewChunk.name;
-          }
-
-          if (isPackageId(normalizedId, COMMON_PREVIEW_VENDOR_PACKAGES)) {
-            return "preview-vendors";
-          }
-
-          return undefined;
+        codeSplitting: {
+          // Keep lazy preview vendors from capturing React, MUI, or Vite helpers
+          includeDependenciesRecursively: false,
+          groups: [
+            ...LAZY_PREVIEW_VENDOR_CHUNKS.map((chunk) => ({
+              name: chunk.name,
+              priority: 2,
+              test: (id: string) => isPackageId(id, chunk.packages),
+            })),
+            {
+              name: "preview-vendors",
+              priority: 1,
+              test: (id: string) =>
+                isPackageId(id, COMMON_PREVIEW_VENDOR_PACKAGES),
+            },
+          ],
         },
+        // Preserve execution order with non-recursive vendor grouping
+        strictExecutionOrder: true,
       },
     },
   },
@@ -78,6 +80,7 @@ export default defineConfig({
  * @returns Whether the id belongs to one of the packages
  */
 function isPackageId(normalizedId: string, packageNames: string[]) {
+  normalizedId = normalizedId.replace(/\\/g, "/");
   return packageNames.some((packageName) =>
     normalizedId.includes(`/node_modules/${packageName}/`)
   );
