@@ -49,6 +49,7 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 const SPREADSHEET_EXTENSIONS = new Set([".xlsx", ".xls", ".csv"]);
+const PRESENTATION_EXTENSIONS = new Set([".pptx"]);
 const ZIP_EXTENSIONS = new Set([".zip"]);
 
 /**
@@ -73,6 +74,7 @@ export enum PreviewKind {
   Zip = "zip",
   Spreadsheet = "spreadsheet",
   Word = "word",
+  Presentation = "presentation",
   Unsupported = "unsupported",
 }
 
@@ -197,6 +199,7 @@ export function getPreviewKind(file: FileItem) {
   if (MARKDOWN_EXTENSIONS.has(extension)) return PreviewKind.Markdown;
   if (SPREADSHEET_EXTENSIONS.has(extension)) return PreviewKind.Spreadsheet;
   if (extension === ".docx") return PreviewKind.Word;
+  if (PRESENTATION_EXTENSIONS.has(extension)) return PreviewKind.Presentation;
   if (
     ZIP_EXTENSIONS.has(extension) ||
     contentType === "application/zip" ||
@@ -239,7 +242,8 @@ export function isWithinPreviewLimit(file: FileItem, kind: PreviewKind) {
   if (
     kind === PreviewKind.Zip ||
     kind === PreviewKind.Spreadsheet ||
-    kind === PreviewKind.Word
+    kind === PreviewKind.Word ||
+    kind === PreviewKind.Presentation
   ) {
     return file.size < STRUCTURED_PREVIEW_LIMIT;
   }

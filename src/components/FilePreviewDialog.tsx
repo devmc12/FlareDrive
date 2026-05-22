@@ -87,6 +87,7 @@ const MARKDOWN_MODES: { value: MarkdownMode; label: string }[] = [
 
 const SpreadsheetPreview = lazy(() => import("./preview/SpreadsheetPreview"));
 const WordPreview = lazy(() => import("./preview/WordPreview"));
+const PresentationPreview = lazy(() => import("./preview/PresentationPreview"));
 
 /**
  * Renders the unified preview and text editing dialog
@@ -160,6 +161,8 @@ function FilePreviewDialog({
           setZipEntries(await loadZipEntries(nextFile.key));
           break;
         case PreviewKind.Spreadsheet:
+          break;
+        case PreviewKind.Presentation:
           break;
         case PreviewKind.Word:
           setWordBlob(await fetchWebDavBlob(nextFile.key));
@@ -533,6 +536,21 @@ function PreviewContent({
         <Suspense fallback={<PreviewLoading />}>
           <WordPreview blob={wordBlob} />
         </Suspense>
+      );
+    case PreviewKind.Presentation:
+      return file ? (
+        <Suspense fallback={<PreviewLoading />}>
+          <PresentationPreview
+            fileKey={file.key}
+            filename={extractFilename(file.key)}
+          />
+        </Suspense>
+      ) : (
+        <FallbackPreview
+          file={file}
+          title="Preview is not available"
+          message="This presentation can be downloaded or opened in a new window"
+        />
       );
     case PreviewKind.Unsupported:
     default:

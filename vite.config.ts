@@ -4,10 +4,10 @@ import { defineConfig } from "vite";
 /**
  * Date: 2026-05-21
  * Time: 13:58
- * Desc: Configures Vite for React, local WebDAV proxying, and office preview chunks
+ * Desc: Configures Vite for React, local WebDAV proxying, and lazy preview chunks
  */
 
-// Common preview dependencies load with the app, while Office previews stay lazy
+// Common preview dependencies load with the app, while heavy document previews stay lazy
 const COMMON_PREVIEW_VENDOR_PACKAGES = [
   "viewerjs",
   "fflate",
@@ -20,6 +20,7 @@ const LAZY_PREVIEW_VENDOR_CHUNKS = [
   { name: "preview-pdf-vendors", packages: ["pdfjs-dist"] },
   { name: "preview-spreadsheet-vendors", packages: ["xlsx", "@univerjs"] },
   { name: "preview-word-vendors", packages: ["docx-preview"] },
+  { name: "preview-pptx-vendors", packages: ["pptx-preview"] },
 ];
 
 export default defineConfig({
@@ -88,5 +89,5 @@ function isPackageId(normalizedId: string, packageNames: string[]) {
  * @returns Whether initial HTML should skip preloading this asset
  */
 function isPreviewVendorAsset(assetPath: string) {
-  return /preview-(pdf|spreadsheet|word)-vendors/.test(assetPath);
+  return /preview-(pdf|spreadsheet|word|pptx)-vendors/.test(assetPath);
 }
