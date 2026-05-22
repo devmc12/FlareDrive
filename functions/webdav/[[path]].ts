@@ -60,5 +60,10 @@ export const onRequest: PagesFunction<WebDavAuthEnv> = async function (
 
   const method: string = (context.request as Request).method;
   const handler = HANDLERS[method] ?? handleMethodNotAllowed;
-  return handler({ bucket, path, request: context.request });
+  return handler({
+    bucket,
+    path,
+    request: context.request,
+    auth: auth.context,
+  });
 };

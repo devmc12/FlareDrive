@@ -37,8 +37,8 @@ WEBDAV_USERNAME="admin"
 WEBDAV_PASSWORD="admin"
 
 # Optional limited WebDAV credentials for clients you do not fully trust
-# Uncomment and replace the hash with the SHA-256 of the raw token secret
-# WEBDAV_ACCESS_TOKENS='[{"username":"phone","passwordSha256":"<sha256-hex>","access":"rw","prefix":"photos/phone/"},{"username":"reader","passwordSha256":"<sha256-hex>","access":"ro","prefix":"shared/"}]'
+# Uncomment and replace each password with the SHA-256 of the raw token secret
+# WEBDAV_ACCESS_TOKENS='[{"username":"phone","password":"<sha256-hex>","access":"rw","includes":["photos/phone/"],"excludes":["photos/phone/private/"]},{"username":"reader","password":"<sha256-hex>","access":"ro","includes":["shared/"],"excludes":[]}]'
 ```
 
 Start the local app:
@@ -72,14 +72,21 @@ node -e "const crypto=require('crypto'); console.log(crypto.createHash('sha256')
 Access token fields:
 
 - `username`: the username entered in the WebDAV client
-- `passwordSha256`: the SHA-256 hash of the raw token secret
+- `password`: the SHA-256 hash of the raw token secret
 - `access`: `ro` for `GET`, `HEAD`, and `PROPFIND`; `rw` for all supported
   WebDAV methods
-- `prefix`: the R2 key prefix the client can access
+- `includes`: an array of R2 key prefixes the client can access
+- `excludes`: an array of R2 key prefixes the client cannot access, even when
+  they are inside `includes`
 
-Clients using a limited token should connect directly to the allowed prefix,
-such as `https://<your-domain.com>/webdav/photos/phone/`. The server rejects
-requests outside that prefix, including `COPY` and `MOVE` destinations.
+Path scopes use prefix matching after trimming leading and trailing slashes.
+For example, `test/abc` allows `test/abc` and `test/abc/file.txt`, but not
+`test/abcd/file.txt`. Excludes take priority over includes. Directory listings
+and recursive operations filter excluded descendants, and the server rejects
+requests outside the allowed scopes, including `COPY` and `MOVE` destinations.
+
+Clients using a limited token should connect directly to one of the included
+prefixes, such as `https://<your-domain.com>/webdav/photos/phone/`.
 
 For a production-like local run without Vite HMR, use:
 
@@ -119,7 +126,7 @@ You can use any client (such as [Cx File Explorer](https://play.google.com/store
 that supports the WebDAV protocol to access your files.
 Fill the endpoint URL as `https://<your-domain.com>/webdav` and use the admin
 username and password you set. For a limited access token, fill the endpoint URL
-with the token prefix, such as
+with an included prefix, such as
 `https://<your-domain.com>/webdav/photos/phone/`, then use the token username
 and raw token secret.
 

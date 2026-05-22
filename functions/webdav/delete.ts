@@ -1,5 +1,5 @@
 import { type RequestHandlerParams } from "./types";
-import { listAll, notFound } from "./utils";
+import { isPathAllowedByAuthContext, listAll, notFound } from "./utils";
 
 /**
  * Date: 2024-07-08
@@ -11,6 +11,7 @@ export async function handleRequestDelete({
   bucket,
   path,
   request,
+  auth,
 }: RequestHandlerParams) {
   const searchParams = new URL(request.url).searchParams;
   if (searchParams.has("uploadId")) {
@@ -37,6 +38,7 @@ export async function handleRequestDelete({
 
   const children = listAll(bucket, path === "" ? undefined : `${path}/`);
   for await (const child of children) {
+    if (!isPathAllowedByAuthContext(auth, child.key)) continue;
     await bucket.delete(child.key);
   }
 

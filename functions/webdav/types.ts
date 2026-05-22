@@ -11,6 +11,7 @@ export interface RequestHandlerParams {
   bucket: R2Bucket;
   path: string;
   request: Request;
+  auth: WebDavAuthContext;
 }
 
 /**
@@ -31,9 +32,10 @@ export type BasicCredentials = {
  */
 export type WebDavAccessToken = {
   username: string;
-  passwordSha256: string;
+  password: string;
   access: WebDavAccess;
-  prefix: string;
+  includes: string[];
+  excludes: string[];
 };
 
 /**
@@ -42,7 +44,8 @@ export type WebDavAccessToken = {
 export type WebDavAuthContext = {
   kind: "admin" | "public" | "token";
   access: WebDavAccess;
-  prefix: string;
+  includes: string[];
+  excludes: string[];
   username?: string;
 };
 

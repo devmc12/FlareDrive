@@ -29,10 +29,11 @@ export async function handleRequestPut({
   bucket,
   path,
   request,
+  auth,
 }: RequestHandlerParams) {
   const searchParams = new URLSearchParams(new URL(request.url).search);
   if (searchParams.has("uploadId")) {
-    return handleRequestPutMultipart({ bucket, path, request });
+    return handleRequestPutMultipart({ bucket, path, request, auth });
   }
 
   if (request.url.endsWith("/")) {

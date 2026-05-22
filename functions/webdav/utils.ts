@@ -2,6 +2,7 @@ import { READ_METHODS, SHA256_HEX_LENGTH, WEBDAV_ENDPOINT } from "./constants";
 import {
   type BasicCredentials,
   type WebDavAccessToken,
+  type WebDavAuthContext,
   type WebDavAuthEnv,
   type WebDavAuthResult,
 } from "./types";
@@ -53,7 +54,7 @@ function forbidden(message = "Forbidden") {
 }
 
 /**
- * Normalizes WebDAV auth paths before prefix comparison
+ * Normalizes WebDAV auth paths before scope comparison
  * @param path Raw or decoded WebDAV object key
  * @returns Path without leading or trailing slashes
  */
@@ -62,20 +63,46 @@ function normalizeAuthPath(path: string) {
 }
 
 /**
- * Checks whether a requested object key is within a configured auth prefix
+ * Checks whether a requested object key is within a configured auth scope
  * @param path Decoded WebDAV object key requested by the client
- * @param prefix Token prefix from WEBDAV_ACCESS_TOKENS
- * @returns True when the path is the prefix itself or one of its children
+ * @param scope Token include or exclude scope from WEBDAV_ACCESS_TOKENS
+ * @returns True when the path is the scope itself or one of its children
  */
-function isPathWithinPrefix(path: string, prefix: string) {
+function isPathWithinAuthScope(path: string, scope: string) {
   const normalizedPath = normalizeAuthPath(path);
-  const normalizedPrefix = normalizeAuthPath(prefix);
+  const normalizedScope = normalizeAuthPath(scope);
 
-  if (!normalizedPrefix) return true;
+  if (!normalizedScope) return true;
 
   return (
-    normalizedPath === normalizedPrefix ||
-    normalizedPath.startsWith(`${normalizedPrefix}/`)
+    normalizedPath === normalizedScope ||
+    normalizedPath.startsWith(`${normalizedScope}/`)
+  );
+}
+
+/**
+ * Checks whether a path is inside any configured auth scope
+ * @param path Decoded WebDAV object key requested by the client
+ * @param scopes Normalized include or exclude scopes
+ * @returns Whether the path belongs to at least one scope
+ */
+function isPathWithinAnyAuthScope(path: string, scopes: string[]) {
+  return scopes.some((scope) => isPathWithinAuthScope(path, scope));
+}
+
+/**
+ * Checks whether a path is allowed by an authorization context
+ * @param context Successful WebDAV authorization context
+ * @param path Decoded WebDAV object key requested by the client
+ * @returns Whether the path is included and not excluded
+ */
+export function isPathAllowedByAuthContext(
+  context: WebDavAuthContext,
+  path: string
+) {
+  return (
+    isPathWithinAnyAuthScope(path, context.includes) &&
+    !isPathWithinAnyAuthScope(path, context.excludes)
   );
 }
 
@@ -155,23 +182,29 @@ function parseAccessTokens(value?: string): WebDavAccessToken[] {
     }
 
     const token = rawToken as Partial<WebDavAccessToken>;
+    const excludes = token.excludes ?? [];
     if (
       typeof token.username !== "string" ||
       !token.username ||
-      typeof token.passwordSha256 !== "string" ||
-      token.passwordSha256.length !== SHA256_HEX_LENGTH ||
-      !/^[a-fA-F0-9]+$/.test(token.passwordSha256) ||
+      typeof token.password !== "string" ||
+      token.password.length !== SHA256_HEX_LENGTH ||
+      !/^[a-fA-F0-9]+$/.test(token.password) ||
       (token.access !== "ro" && token.access !== "rw") ||
-      typeof token.prefix !== "string"
+      !Array.isArray(token.includes) ||
+      token.includes.length === 0 ||
+      !token.includes.every((include) => typeof include === "string") ||
+      !Array.isArray(excludes) ||
+      !excludes.every((exclude) => typeof exclude === "string")
     ) {
       throw new Error(`Invalid WebDAV access token at index ${index}`);
     }
 
     return {
       username: token.username,
-      passwordSha256: token.passwordSha256.toLowerCase(),
+      password: token.password.toLowerCase(),
       access: token.access,
-      prefix: normalizeAuthPath(token.prefix),
+      includes: token.includes.map(normalizeAuthPath),
+      excludes: excludes.map(normalizeAuthPath),
     };
   });
 }
@@ -210,12 +243,12 @@ async function findMatchingToken(
   tokens: WebDavAccessToken[],
   credentials: BasicCredentials
 ) {
-  const passwordSha256 = await sha256Hex(credentials.password);
+  const hashedPassword = await sha256Hex(credentials.password);
 
   return tokens.find(
     (token) =>
       token.username === credentials.username &&
-      timingSafeEqual(token.passwordSha256, passwordSha256)
+      timingSafeEqual(token.password, hashedPassword)
   );
 }
 
@@ -238,7 +271,7 @@ export async function authorizeWebDavRequest({
   if (env.WEBDAV_PUBLIC_READ === "1" && READ_METHODS.has(request.method)) {
     return {
       ok: true,
-      context: { kind: "public", access: "ro", prefix: "" },
+      context: { kind: "public", access: "ro", includes: [""], excludes: [] },
     };
   }
 
@@ -267,7 +300,7 @@ export async function authorizeWebDavRequest({
   ) {
     return {
       ok: true,
-      context: { kind: "admin", access: "rw", prefix: "" },
+      context: { kind: "admin", access: "rw", includes: [""], excludes: [] },
     };
   }
 
@@ -288,25 +321,31 @@ export async function authorizeWebDavRequest({
     return { ok: false, response: forbidden() };
   }
 
-  if (!isPathWithinPrefix(path, token.prefix)) {
+  const tokenContext: WebDavAuthContext = {
+    kind: "token",
+    access: token.access,
+    includes: token.includes,
+    excludes: token.excludes,
+    username: token.username,
+  };
+
+  if (!isPathAllowedByAuthContext(tokenContext, path)) {
     return { ok: false, response: forbidden() };
   }
 
   if (["COPY", "MOVE"].includes(request.method)) {
     const destination = parseDestinationPath(request);
-    if (!destination || !isPathWithinPrefix(destination, token.prefix)) {
+    if (
+      !destination ||
+      !isPathAllowedByAuthContext(tokenContext, destination)
+    ) {
       return { ok: false, response: forbidden() };
     }
   }
 
   return {
     ok: true,
-    context: {
-      kind: "token",
-      access: token.access,
-      prefix: token.prefix,
-      username: token.username,
-    },
+    context: tokenContext,
   };
 }
 

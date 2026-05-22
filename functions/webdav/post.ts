@@ -44,16 +44,17 @@ export const handleRequestPost = async function ({
   bucket,
   path,
   request,
+  auth,
 }: RequestHandlerParams) {
   const url = new URL(request.url);
   const searchParams = new URLSearchParams(url.search);
 
   if (searchParams.has("uploads")) {
-    return handleRequestPostCreateMultipart({ bucket, path, request });
+    return handleRequestPostCreateMultipart({ bucket, path, request, auth });
   }
 
   if (searchParams.has("uploadId")) {
-    return handleRequestPostCompleteMultipart({ bucket, path, request });
+    return handleRequestPostCompleteMultipart({ bucket, path, request, auth });
   }
 
   return new Response("Method not allowed", { status: 405 });

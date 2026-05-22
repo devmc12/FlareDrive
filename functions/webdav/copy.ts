@@ -2,12 +2,13 @@ import pLimit from "p-limit";
 
 import { WEBDAV_ENDPOINT } from "./constants";
 import { type RequestHandlerParams } from "./types";
-import { listAll, notFound } from "./utils";
+import { isPathAllowedByAuthContext, listAll, notFound } from "./utils";
 
 export async function handleRequestCopy({
   bucket,
   path,
   request,
+  auth,
 }: RequestHandlerParams) {
   const dontOverwrite = request.headers.get("Overwrite") === "F";
   const destinationHeader = request.headers.get("Destination");
@@ -60,6 +61,7 @@ export async function handleRequestCopy({
         const limit = pLimit(5);
         const promises = [];
         for await (const object of listAll(bucket, prefix, true)) {
+          if (!isPathAllowedByAuthContext(auth, object.key)) continue;
           promises.push(limit(() => copy(object)));
         }
         await Promise.all(promises);

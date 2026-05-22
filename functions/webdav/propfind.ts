@@ -1,6 +1,6 @@
 import { ROOT_OBJECT, WEBDAV_ENDPOINT } from "./constants";
 import { type RequestHandlerParams } from "./types";
-import { listAll } from "./utils";
+import { isPathAllowedByAuthContext, listAll } from "./utils";
 
 type DavProperties = {
   creationdate: string | undefined;
@@ -35,10 +35,12 @@ async function findChildren({
   bucket,
   path,
   depth,
+  auth,
 }: {
   bucket: R2Bucket;
   path: string;
   depth: string;
+  auth: RequestHandlerParams["auth"];
 }) {
   if (!["1", "infinity"].includes(depth)) return [];
 
@@ -46,7 +48,7 @@ async function findChildren({
 
   const prefix = path === "" ? path : `${path}/`;
   for await (const object of listAll(bucket, prefix, depth === "infinity")) {
-    objects.push(object);
+    if (isPathAllowedByAuthContext(auth, object.key)) objects.push(object);
   }
 
   return objects;
@@ -56,6 +58,7 @@ export async function handleRequestPropfind({
   bucket,
   path,
   request,
+  auth,
 }: RequestHandlerParams) {
   const responseTemplate = `<?xml version="1.0" encoding="utf-8" ?>
 <multistatus xmlns="DAV:" xmlns:fd="flaredrive">
@@ -75,6 +78,7 @@ export async function handleRequestPropfind({
         bucket,
         path,
         depth,
+        auth,
       });
 
   const items = [rootObject, ...children].map((child) => {
