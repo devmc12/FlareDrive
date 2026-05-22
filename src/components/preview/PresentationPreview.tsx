@@ -21,7 +21,17 @@ import {
  */
 
 type PreviewStatus = "loading" | "ready" | "error";
+type PPTXPreviewApi = typeof pptxPreview;
+type PPTXPreviewModule = PPTXPreviewApi & {
+  default?: PPTXPreviewApi;
+};
 type PPTXPreviewer = ReturnType<typeof pptxPreview.init>;
+
+// Width changes below this value are usually desktop scrollbar gutter jitter
+const PPTX_RESIZE_RENDER_THRESHOLD = 48;
+
+// Minimum rendered slide width before ResizeObserver reports a real container size
+const PPTX_MIN_RENDER_WIDTH = 240;
 
 /**
  * Renders a PPTX file locally with pptx-preview
@@ -47,8 +57,12 @@ function PresentationPreview({
 
     const updateWidth = (nextWidth: number) => {
       const roundedWidth = Math.floor(nextWidth);
+      if (roundedWidth <= 0) return;
       setPreviewWidth((currentWidth) =>
-        Math.abs(currentWidth - roundedWidth) < 8 ? currentWidth : roundedWidth
+        currentWidth === 0 ||
+        Math.abs(currentWidth - roundedWidth) >= PPTX_RESIZE_RENDER_THRESHOLD
+          ? roundedWidth
+          : currentWidth
       );
     };
     updateWidth(container.clientWidth);
@@ -90,11 +104,11 @@ function PresentationPreview({
     if (!arrayBuffer || !renderTarget || !previewWidth) return;
 
     let canceled = false;
-    const width = Math.max(240, previewWidth);
+    const width = Math.max(PPTX_MIN_RENDER_WIDTH, previewWidth);
     setStatus("loading");
     cleanupViewer(renderTarget, viewerRef.current);
 
-    const viewer = pptxPreview.init(renderTarget, {
+    const viewer = getPptxPreviewApi().init(renderTarget, {
       mode: "list",
       width,
     });
@@ -150,12 +164,13 @@ function PresentationPreview({
         minHeight: 0,
         overflow: "auto",
         position: "relative",
+        scrollbarGutter: "stable",
       }}>
       <Box
         ref={renderRef}
         sx={{
           minHeight: status === "loading" ? 180 : 0,
-          padding: { xs: 1, sm: 2 },
+          padding: 0,
           "& .pptx-preview-wrapper": {
             maxWidth: "100%",
           },
@@ -180,6 +195,15 @@ function PresentationPreview({
       )}
     </Box>
   );
+}
+
+/**
+ * Resolves the UMD module shape produced by different bundler runtimes
+ * @returns pptx-preview API object
+ */
+function getPptxPreviewApi() {
+  const module = pptxPreview as PPTXPreviewModule;
+  return module.default ?? module;
 }
 
 /**

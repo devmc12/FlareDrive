@@ -33,11 +33,11 @@ import {
 import { unzipSync } from "fflate";
 import {
   lazy,
+  type ReactNode,
   Suspense,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -123,6 +123,8 @@ function FilePreviewDialog({
     target?.type === "textpad" || isEditablePreviewKind(previewKind);
   const oversizedFile =
     file && !isWithinPreviewLimit(file, previewKind) ? file : null;
+  const flushPreviewContent =
+    target?.type !== "textpad" && isFlushPreviewKind(previewKind);
 
   useEffect(() => {
     if (!open || !target) return;
@@ -326,7 +328,8 @@ function FilePreviewDialog({
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
-            padding: { xs: 1, sm: 2 },
+            overflow: flushPreviewContent ? "hidden" : undefined,
+            padding: flushPreviewContent ? 0 : { xs: 1, sm: 2 },
           }}>
           {saveError && (
             <Alert severity="error" sx={{ marginBottom: 1 }}>
@@ -570,10 +573,12 @@ function PreviewContent({
 function TextEditor({
   value,
   fullScreen,
+  outlined = false,
   onChange,
 }: {
   value: string;
   fullScreen: boolean;
+  outlined?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -584,16 +589,29 @@ function TextEditor({
       minRows={fullScreen ? 20 : 24}
       onChange={(event) => onChange(event.target.value)}
       sx={{
+        display: "flex",
+        flex: "1 1 auto",
         flexGrow: 1,
         minHeight: 0,
         "& .MuiInputBase-root": {
           alignItems: "stretch",
+          borderRadius: outlined ? 1 : 0,
+          flex: "1 1 auto",
           fontFamily: "monospace",
           height: "100%",
+          minHeight: 0,
+          padding: 0,
+        },
+        "& .MuiOutlinedInput-notchedOutline": {
+          border: outlined ? undefined : 0,
+          borderColor: "divider",
         },
         "& textarea": {
+          boxSizing: "border-box",
           height: "100% !important",
           overflow: "auto !important",
+          padding: { xs: "12px", sm: "16px" },
+          resize: "none",
         },
       }}
     />
@@ -617,20 +635,33 @@ function MarkdownEditor({
   onModeChange: (mode: MarkdownMode) => void;
 }) {
   return (
-    <Stack spacing={1.5} sx={{ flexGrow: 1, minHeight: 0 }}>
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={mode}
-        onChange={(_, nextMode: MarkdownMode | null) => {
-          if (nextMode) onModeChange(nextMode);
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1,
+        minHeight: 0,
+      }}>
+      <Box
+        sx={{
+          paddingX: { xs: 1, sm: 2 },
+          paddingBottom: 0,
+          paddingTop: { xs: 1, sm: 2 },
         }}>
-        {MARKDOWN_MODES.map((option) => (
-          <ToggleButton key={option.value} value={option.value}>
-            {option.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={mode}
+          onChange={(_, nextMode: MarkdownMode | null) => {
+            if (nextMode) onModeChange(nextMode);
+          }}>
+          {MARKDOWN_MODES.map((option) => (
+            <ToggleButton key={option.value} value={option.value}>
+              {option.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
       <Box
         sx={{
           display: "flex",
@@ -638,15 +669,24 @@ function MarkdownEditor({
             xs: "column",
             md: mode === "split" ? "row" : "column",
           },
-          flexGrow: 1,
+          flex: "1 1 auto",
           gap: 1.5,
           minHeight: 0,
+          padding: { xs: 1, sm: 2 },
+          paddingTop: 0,
         }}>
         {(mode === "edit" || mode === "split") && (
-          <Box sx={{ flex: 1, minHeight: 0 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flex: "1 1 0",
+              minHeight: 0,
+              minWidth: 0,
+            }}>
             <TextEditor
               value={value}
               fullScreen={fullScreen}
+              outlined
               onChange={onChange}
             />
           </Box>
@@ -655,8 +695,9 @@ function MarkdownEditor({
           <Paper
             variant="outlined"
             sx={{
-              flex: 1,
+              flex: "1 1 0",
               minHeight: 0,
+              minWidth: 0,
               overflow: "auto",
               padding: 2,
             }}>
@@ -666,7 +707,7 @@ function MarkdownEditor({
           </Paper>
         )}
       </Box>
-    </Stack>
+    </Box>
   );
 }
 
@@ -794,6 +835,21 @@ function PreviewLoading() {
       }}>
       <CircularProgress size={28} />
     </Box>
+  );
+}
+
+/**
+ * Checks whether a preview owns the full dialog content surface
+ * @param kind Preview kind selected for the file
+ * @returns Whether DialogContent should avoid its default padding
+ */
+function isFlushPreviewKind(kind: PreviewKind) {
+  return (
+    kind === PreviewKind.Markdown ||
+    kind === PreviewKind.Spreadsheet ||
+    kind === PreviewKind.Text ||
+    kind === PreviewKind.Word ||
+    kind === PreviewKind.Presentation
   );
 }
 

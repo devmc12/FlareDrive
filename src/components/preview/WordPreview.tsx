@@ -54,15 +54,18 @@ function WordPreview({ blob }: { blob: Blob | null }) {
         lineHeight: 1.65,
         minHeight: 0,
         overflow: "auto",
-        padding: { xs: 2, sm: 3 },
+        padding: { xs: 0, sm: 3 },
         "& .flaredrive-docx-preview-wrapper": {
+          alignItems: { xs: "flex-start", sm: "center" },
           backgroundColor: "transparent",
+          minWidth: { xs: "max-content", sm: "auto" },
           padding: 0,
+          width: { xs: "max-content", sm: "auto" },
         },
         "& .flaredrive-docx-preview": {
           boxShadow: "none",
-          margin: "0 auto 24px",
-          maxWidth: "100%",
+          margin: { xs: "0 0 24px", sm: "0 auto 24px" },
+          maxWidth: { xs: "none", sm: "100%" },
         },
       }}>
       <Box ref={styleRef} />
