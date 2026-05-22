@@ -47,6 +47,7 @@ type FileBrowserMenuProps = {
   onSortDirectionChange: (sortDirection: SortDirection) => void;
   onGroupByChange: (groupBy: GroupBy) => void;
   onShowProgress: () => void;
+  onOpenSettings: () => void;
 };
 
 /**
@@ -65,6 +66,7 @@ function FileBrowserMenu({
   onSortDirectionChange,
   onGroupByChange,
   onShowProgress,
+  onOpenSettings,
 }: FileBrowserMenuProps) {
   const [submenu, setSubmenu] = useState<FileBrowserSubmenu | null>(null);
   const [submenuAnchorEl, setSubmenuAnchorEl] = useState<HTMLElement | null>(
@@ -117,6 +119,13 @@ function FileBrowserMenu({
             onShowProgress();
           }}>
           Progress
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            closeAll();
+            onOpenSettings();
+          }}>
+          Settings
         </MenuItem>
       </Menu>
 

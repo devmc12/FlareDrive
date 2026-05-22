@@ -13,7 +13,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import FileGrid from "./FileGrid";
 import MultiSelectToolbar from "./MultiSelectToolbar";
-import TextPadDrawer from "./TextPadDrawer";
 import UploadDrawer, { UploadFab } from "./UploadDrawer";
 import {
   GroupBy,
@@ -22,6 +21,13 @@ import {
   type SortDirection,
   type SortField,
 } from "./app/constants";
+import {
+  getPreviewKind,
+  openExternalFile,
+  OpenFileMethod,
+  PreviewKind,
+  type AppSettings,
+} from "./app/preview";
 import { copyPaste, createRemoteFolder, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
 import type { FileGroup, FileItem } from "./app/type";
@@ -41,6 +47,11 @@ import FileDetailsView, {
   FileDetailsHeader,
 } from "./components/FileDetailsView";
 import FileGroupSection from "./components/FileGroupSection";
+import FilePreviewDialog, {
+  type FilePreviewTarget,
+} from "./components/FilePreviewDialog";
+import ImageViewerOverlay from "./components/ImageViewerOverlay";
+import RenameDialog from "./components/RenameDialog";
 
 /**
  * Date: 2024-07-02
@@ -148,6 +159,7 @@ function DropZone({
 function Main({
   search,
   onError,
+  settings,
   viewMode,
   sortField,
   sortDirection,
@@ -156,6 +168,7 @@ function Main({
 }: {
   search: string;
   onError: (error: Error) => void;
+  settings: AppSettings;
   viewMode: ViewMode;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -169,7 +182,11 @@ function Main({
   const [loading, setLoading] = useState(true);
   const [multiSelected, setMultiSelected] = useState<string[] | null>(null);
   const [showUploadDrawer, setShowUploadDrawer] = useState(false);
-  const [showTextPadDrawer, setShowTextPadDrawer] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<FilePreviewTarget | null>(
+    null
+  );
+  const [imageViewerFile, setImageViewerFile] = useState<FileItem | null>(null);
+  const [renameFile, setRenameFile] = useState<FileItem | null>(null);
   const [lastUploadKey, setLastUploadKey] = useState<string | null>(null);
 
   const transferQueue = useTransferQueue();
@@ -302,6 +319,32 @@ function Main({
     });
   }, []);
 
+  const handleOpenFile = useCallback(
+    (file: FileItem) => {
+      const previewKind = getPreviewKind(file);
+      if (
+        settings.openFileMethod === OpenFileMethod.External ||
+        previewKind === PreviewKind.Pdf
+      ) {
+        openExternalFile(file.key);
+        return;
+      }
+
+      if (previewKind === PreviewKind.Image) {
+        setImageViewerFile(file);
+        return;
+      }
+
+      setPreviewTarget({ type: "file", file });
+    },
+    [settings.openFileMethod]
+  );
+
+  const selectedRenameFile = useMemo(() => {
+    if (multiSelected?.length !== 1) return null;
+    return files.find((file) => file.key === multiSelected[0]) ?? null;
+  }, [files, multiSelected]);
+
   return (
     <>
       {cwd && <PathBreadcrumb path={cwd} onCwdChange={navigateToCwd} />}
@@ -317,6 +360,7 @@ function Main({
             viewMode={viewMode}
             groupBy={groupBy}
             onCwdChange={navigateToCwd}
+            onOpenFile={handleOpenFile}
             multiSelected={multiSelected}
             onMultiSelect={handleMultiSelect}
             emptyMessage={<Centered>No files or folders</Centered>}
@@ -362,14 +406,33 @@ function Main({
         onUpload={fetchFiles}
         onUploadSource={handleUploadSource}
         onError={onError}
-        onOpenTextPad={() => setShowTextPadDrawer(true)}
+        onOpenTextPad={() => setPreviewTarget({ type: "textpad", cwd })}
       />
 
-      <TextPadDrawer
-        open={showTextPadDrawer}
-        setOpen={setShowTextPadDrawer}
-        cwd={cwd}
-        onUpload={fetchFiles}
+      {previewTarget && (
+        <FilePreviewDialog
+          target={previewTarget}
+          onClose={() => setPreviewTarget(null)}
+          onSaved={fetchFiles}
+        />
+      )}
+
+      {imageViewerFile && (
+        <ImageViewerOverlay
+          file={imageViewerFile}
+          onClose={() => setImageViewerFile(null)}
+        />
+      )}
+
+      <RenameDialog
+        file={renameFile}
+        open={Boolean(renameFile)}
+        onClose={() => setRenameFile(null)}
+        onConfirm={async (sourceKey, targetKey) => {
+          await copyPaste(sourceKey, targetKey, true);
+          setMultiSelected(null);
+          fetchFiles();
+        }}
       />
 
       <MultiSelectToolbar
@@ -383,11 +446,8 @@ function Main({
           a.click();
         }}
         onRename={async () => {
-          if (multiSelected?.length !== 1) return;
-          const newName = window.prompt("Rename to:");
-          if (!newName) return;
-          await copyPaste(multiSelected[0], cwd + newName, true);
-          fetchFiles();
+          if (!selectedRenameFile) return;
+          setRenameFile(selectedRenameFile);
         }}
         onDelete={async () => {
           if (!multiSelected?.length) return;
@@ -423,6 +483,7 @@ function FileBrowserContent({
   viewMode,
   groupBy,
   onCwdChange,
+  onOpenFile,
   multiSelected,
   onMultiSelect,
   emptyMessage,
@@ -432,6 +493,7 @@ function FileBrowserContent({
   viewMode: ViewMode;
   groupBy: GroupBy;
   onCwdChange: (newCwd: string) => void;
+  onOpenFile: (file: FileItem) => void;
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   emptyMessage: React.ReactNode;
@@ -449,6 +511,7 @@ function FileBrowserContent({
         files={groups[0].files}
         viewMode={viewMode}
         onCwdChange={onCwdChange}
+        onOpenFile={onOpenFile}
         multiSelected={multiSelected}
         onMultiSelect={onMultiSelect}
         showDetailsHeader
@@ -469,6 +532,7 @@ function FileBrowserContent({
             files={group.files}
             viewMode={viewMode}
             onCwdChange={onCwdChange}
+            onOpenFile={onOpenFile}
             multiSelected={multiSelected}
             onMultiSelect={onMultiSelect}
             showDetailsHeader={false}
@@ -487,6 +551,7 @@ function FileView({
   files,
   viewMode,
   onCwdChange,
+  onOpenFile,
   multiSelected,
   onMultiSelect,
   showDetailsHeader,
@@ -495,6 +560,7 @@ function FileView({
   files: FileItem[];
   viewMode: ViewMode;
   onCwdChange: (newCwd: string) => void;
+  onOpenFile: (file: FileItem) => void;
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   showDetailsHeader: boolean;
@@ -506,6 +572,7 @@ function FileView({
         <FileDetailsView
           files={files}
           onCwdChange={onCwdChange}
+          onOpenFile={onOpenFile}
           multiSelected={multiSelected}
           onMultiSelect={onMultiSelect}
           showHeader={showDetailsHeader}
@@ -518,6 +585,7 @@ function FileView({
     <FileGrid
       files={files}
       onCwdChange={onCwdChange}
+      onOpenFile={onOpenFile}
       multiSelected={multiSelected}
       onMultiSelect={onMultiSelect}
       bottomPadding={bottomPadding}

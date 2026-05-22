@@ -31,6 +31,7 @@ function Header({
   onSortFieldChange,
   onSortDirectionChange,
   onGroupByChange,
+  onOpenSettings,
 }: {
   search: string;
   onSearchChange: (newSearch: string) => void;
@@ -43,6 +44,7 @@ function Header({
   onSortFieldChange: (sortField: SortField) => void;
   onSortDirectionChange: (sortDirection: SortDirection) => void;
   onGroupByChange: (groupBy: GroupBy) => void;
+  onOpenSettings: () => void;
 }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -80,6 +82,7 @@ function Header({
         onSortDirectionChange={onSortDirectionChange}
         onGroupByChange={onGroupByChange}
         onShowProgress={() => setShowProgressDialog(true)}
+        onOpenSettings={onOpenSettings}
       />
     </Toolbar>
   );

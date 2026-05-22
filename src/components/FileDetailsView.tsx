@@ -13,7 +13,6 @@ import MimeIcon from "../MimeIcon";
 import { THUMBNAIL_PATH_PREFIX, WEBDAV_ENDPOINT } from "../app/constants";
 import type { FileItem } from "../app/type";
 import {
-  encodeKey,
   extractFilename,
   getFileTypeLabel,
   humanReadableSize,
@@ -32,12 +31,14 @@ import {
 function FileDetailsView({
   files,
   onCwdChange,
+  onOpenFile,
   multiSelected,
   onMultiSelect,
   showHeader = true,
 }: {
   files: FileItem[];
   onCwdChange: (newCwd: string) => void;
+  onOpenFile: (file: FileItem) => void;
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   showHeader?: boolean;
@@ -80,11 +81,7 @@ function FileDetailsView({
                   } else if (isDirectory(file)) {
                     onCwdChange(`${file.key}/`);
                   } else {
-                    window.open(
-                      `${WEBDAV_ENDPOINT}${encodeKey(file.key)}`,
-                      "_blank",
-                      "noopener,noreferrer"
-                    );
+                    onOpenFile(file);
                   }
                 }}
                 onContextMenu={(event) => {

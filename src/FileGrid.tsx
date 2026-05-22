@@ -9,12 +9,7 @@ import React from "react";
 import MimeIcon from "./MimeIcon";
 import { THUMBNAIL_PATH_PREFIX, WEBDAV_ENDPOINT } from "./app/constants";
 import type { FileItem } from "./app/type";
-import {
-  encodeKey,
-  extractFilename,
-  humanReadableSize,
-  isDirectory,
-} from "./app/utils";
+import { extractFilename, humanReadableSize, isDirectory } from "./app/utils";
 
 /**
  * Date: 2024-07-02
@@ -28,6 +23,7 @@ import {
 function FileGrid({
   files,
   onCwdChange,
+  onOpenFile,
   multiSelected,
   onMultiSelect,
   emptyMessage,
@@ -35,6 +31,7 @@ function FileGrid({
 }: {
   files: FileItem[];
   onCwdChange: (newCwd: string) => void;
+  onOpenFile: (file: FileItem) => void;
   multiSelected: string[] | null;
   onMultiSelect: (key: string) => void;
   emptyMessage?: React.ReactNode;
@@ -56,12 +53,9 @@ function FileGrid({
                   onMultiSelect(file.key);
                 } else if (isDirectory(file)) {
                   onCwdChange(file.key + "/");
-                } else
-                  window.open(
-                    `${WEBDAV_ENDPOINT}${encodeKey(file.key)}`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  );
+                } else {
+                  onOpenFile(file);
+                }
               }}
               onContextMenu={(e) => {
                 e.preventDefault();

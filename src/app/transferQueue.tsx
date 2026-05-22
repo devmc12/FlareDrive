@@ -49,7 +49,9 @@ const SetTransferQueueContext = createContext<
   React.Dispatch<React.SetStateAction<TransferTask[]>>
 >(() => {});
 const TransferActionsContext = createContext({
-  cancelTransferTask: (_id: string) => {},
+  cancelTransferTask: (id: string) => {
+    void id;
+  },
   cancelUploads: () => {},
 });
 

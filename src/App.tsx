@@ -21,7 +21,13 @@ import {
   type SortField,
   type ViewMode,
 } from "./app/constants";
+import {
+  loadAppSettings,
+  saveAppSettings,
+  type AppSettings,
+} from "./app/preview";
 import { TransferQueueProvider } from "./app/transferQueue";
+import SettingsDialog from "./components/SettingsDialog";
 import UploadProgressBar from "./components/UploadProgressBar";
 
 /**
@@ -49,6 +55,10 @@ function App() {
     DEFAULT_SORT_DIRECTION
   );
   const [groupBy, setGroupBy] = useState<GroupBy>(DEFAULT_GROUP_BY);
+  const [settings, setSettings] = useState<AppSettings>(() =>
+    loadAppSettings()
+  );
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showProgressDialog, setShowProgressDialog] = React.useState(false);
   const [progressDialogTab, setProgressDialogTab] = useState(
     ProgressDialogTab.Downloads
@@ -62,6 +72,14 @@ function App() {
   function openUploadsProgress() {
     setProgressDialogTab(ProgressDialogTab.Uploads);
     setShowProgressDialog(true);
+  }
+
+  /**
+   * Persists user settings and updates the active app state
+   */
+  function handleSettingsChange(nextSettings: AppSettings) {
+    setSettings(nextSettings);
+    saveAppSettings(nextSettings);
   }
 
   return (
@@ -82,10 +100,12 @@ function App() {
             onSortFieldChange={setSortField}
             onSortDirectionChange={setSortDirection}
             onGroupByChange={setGroupBy}
+            onOpenSettings={() => setShowSettingsDialog(true)}
           />
           <Main
             search={search}
             onError={setError}
+            settings={settings}
             viewMode={viewMode}
             sortField={sortField}
             sortDirection={sortDirection}
@@ -108,6 +128,12 @@ function App() {
         <UploadProgressBar
           lifted={bottomActionBarOpen}
           onOpenUploads={openUploadsProgress}
+        />
+        <SettingsDialog
+          open={showSettingsDialog}
+          settings={settings}
+          onChange={handleSettingsChange}
+          onClose={() => setShowSettingsDialog(false)}
         />
       </TransferQueueProvider>
     </ThemeProvider>

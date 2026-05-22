@@ -7,10 +7,20 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
+    "@univerjs/core": "^0.23.0",
+    "@univerjs/preset-sheets-core": "^0.23.0",
+    "@univerjs/presets": "^0.23.0",
+    "docx-preview": "^0.3.7",
+    "fflate": "^0.8.3",
     "p-limit": "^7.3.0",
+    "pdfjs-dist": "^5.7.284",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "web-vitals": "^5.2.0"
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "viewerjs": "^1.11.7",
+    "web-vitals": "^5.2.0",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
     "start": "npm run dev",
@@ -18,7 +28,7 @@
     "dev:frontend": "vite --host 127.0.0.1 --port 3601 --strictPort",
     "dev:functions": "wrangler pages dev public --port 3602 --compatibility-date=2026-05-20 --env-file .dev.vars --r2=BUCKET",
     "build": "tsc --noEmit && vite build",
-    "lint": "eslint src functions utils vite.config.ts eslint.config.mjs",
+    "lint": "eslint src functions vite.config.ts eslint.config.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 3600"
   },
   "browserslist": {
