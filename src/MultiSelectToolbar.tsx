@@ -1,28 +1,44 @@
-import React, { useState } from "react";
-import { IconButton, Menu, MenuItem, Slide, Toolbar } from "@mui/material";
 import {
   Close as CloseIcon,
+  ContentCopy as ContentCopyIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
   MoreHoriz as MoreHorizIcon,
 } from "@mui/icons-material";
+import { IconButton, Menu, MenuItem, Slide, Toolbar } from "@mui/material";
+import React, { useState } from "react";
 
+/**
+ * Date: 2024-07-02
+ * Time: 14:19
+ * Desc: Renders the mobile multi-select action toolbar
+ */
+
+/**
+ * Shows mobile file actions for the active selection
+ */
 function MultiSelectToolbar({
   multiSelected,
+  downloadDisabled,
   onClose,
   onDownload,
   onRename,
   onDelete,
-  onShare,
+  onCopyLink,
 }: {
   multiSelected: string[] | null;
+  downloadDisabled: boolean;
   onClose: () => void;
   onDownload: () => void;
   onRename: () => void;
   onDelete: () => void;
-  onShare: () => void;
+  onCopyLink: () => void;
 }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const runMenuAction = (action: () => void) => () => {
+    setAnchorEl(null);
+    action();
+  };
 
   return (
     <Slide direction="up" in={multiSelected !== null}>
@@ -36,18 +52,14 @@ function MultiSelectToolbar({
           backgroundColor: (theme) => theme.palette.background.paper,
           borderTop: "1px solid lightgray",
           justifyContent: "space-evenly",
-        }}
-      >
+        }}>
         <IconButton color="primary" onClick={onClose}>
           <CloseIcon />
         </IconButton>
         <IconButton
           color="primary"
-          disabled={
-            multiSelected?.length !== 1 || multiSelected[0].endsWith("/")
-          }
-          onClick={onDownload}
-        >
+          disabled={downloadDisabled}
+          onClick={onDownload}>
           <DownloadIcon />
         </IconButton>
         <IconButton color="primary" onClick={onDelete}>
@@ -55,23 +67,22 @@ function MultiSelectToolbar({
         </IconButton>
         <IconButton
           color="primary"
-          disabled={
-            multiSelected?.length !== 1 || multiSelected[0].endsWith("/")
-          }
-          onClick={(e) => setAnchorEl(e.currentTarget)}
-        >
+          disabled={multiSelected?.length !== 1}
+          onClick={(e) => setAnchorEl(e.currentTarget)}>
           <MoreHorizIcon />
         </IconButton>
         {multiSelected?.length && (
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
-            onClose={() => setAnchorEl(null)}
-          >
+            onClose={() => setAnchorEl(null)}>
             {multiSelected.length === 1 && (
               <React.Fragment>
-                <MenuItem onClick={onRename}>Rename</MenuItem>
-                <MenuItem onClick={onShare}>Share</MenuItem>
+                <MenuItem onClick={runMenuAction(onRename)}>Rename</MenuItem>
+                <MenuItem onClick={runMenuAction(onCopyLink)}>
+                  <ContentCopyIcon fontSize="small" sx={{ marginRight: 1 }} />
+                  Copy Link
+                </MenuItem>
               </React.Fragment>
             )}
           </Menu>

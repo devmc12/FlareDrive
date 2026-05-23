@@ -12,16 +12,6 @@ import Header from "./Header";
 import Main from "./Main";
 import ProgressDialog, { ProgressDialogTab } from "./ProgressDialog";
 import {
-  DEFAULT_GROUP_BY,
-  DEFAULT_SORT_DIRECTION,
-  DEFAULT_SORT_FIELD,
-  DEFAULT_VIEW_MODE,
-  type GroupBy,
-  type SortDirection,
-  type SortField,
-  type ViewMode,
-} from "./app/constants";
-import {
   loadAppSettings,
   saveAppSettings,
   type AppSettings,
@@ -49,12 +39,6 @@ const theme = createTheme({
  */
 function App() {
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
-  const [sortField, setSortField] = useState<SortField>(DEFAULT_SORT_FIELD);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(
-    DEFAULT_SORT_DIRECTION
-  );
-  const [groupBy, setGroupBy] = useState<GroupBy>(DEFAULT_GROUP_BY);
   const [settings, setSettings] = useState<AppSettings>(() =>
     loadAppSettings()
   );
@@ -65,6 +49,7 @@ function App() {
   );
   const [bottomActionBarOpen, setBottomActionBarOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   /**
    * Opens the progress dialog directly to the upload task list
@@ -82,6 +67,17 @@ function App() {
     saveAppSettings(nextSettings);
   }
 
+  /**
+   * Persists partial setting changes without losing recently updated fields
+   */
+  function updateSettings(patch: Partial<AppSettings>) {
+    setSettings((currentSettings) => {
+      const nextSettings = { ...currentSettings, ...patch };
+      saveAppSettings(nextSettings);
+      return nextSettings;
+    });
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -92,24 +88,27 @@ function App() {
             search={search}
             onSearchChange={(newSearch: string) => setSearch(newSearch)}
             setShowProgressDialog={setShowProgressDialog}
-            viewMode={viewMode}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            groupBy={groupBy}
-            onViewModeChange={setViewMode}
-            onSortFieldChange={setSortField}
-            onSortDirectionChange={setSortDirection}
-            onGroupByChange={setGroupBy}
+            viewMode={settings.viewMode}
+            sortField={settings.sortField}
+            sortDirection={settings.sortDirection}
+            groupBy={settings.groupBy}
+            onViewModeChange={(viewMode) => updateSettings({ viewMode })}
+            onSortFieldChange={(sortField) => updateSettings({ sortField })}
+            onSortDirectionChange={(sortDirection) =>
+              updateSettings({ sortDirection })
+            }
+            onGroupByChange={(groupBy) => updateSettings({ groupBy })}
             onOpenSettings={() => setShowSettingsDialog(true)}
           />
           <Main
             search={search}
             onError={setError}
+            onStatusMessage={setStatusMessage}
             settings={settings}
-            viewMode={viewMode}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            groupBy={groupBy}
+            viewMode={settings.viewMode}
+            sortField={settings.sortField}
+            sortDirection={settings.sortDirection}
+            groupBy={settings.groupBy}
             onBottomActionBarVisibilityChange={setBottomActionBarOpen}
           />
         </Stack>
@@ -118,6 +117,12 @@ function App() {
           open={Boolean(error)}
           message={error?.message}
           onClose={() => setError(null)}
+        />
+        <Snackbar
+          autoHideDuration={3000}
+          open={Boolean(statusMessage)}
+          message={statusMessage}
+          onClose={() => setStatusMessage(null)}
         />
         <ProgressDialog
           open={showProgressDialog}

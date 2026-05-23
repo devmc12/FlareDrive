@@ -1,4 +1,14 @@
-import { WEBDAV_ENDPOINT } from "./constants";
+import {
+  DEFAULT_GROUP_BY,
+  DEFAULT_SORT_DIRECTION,
+  DEFAULT_SORT_FIELD,
+  DEFAULT_VIEW_MODE,
+  GroupBy,
+  SortDirection,
+  SortField,
+  ViewMode,
+  WEBDAV_ENDPOINT,
+} from "./constants";
 import type { FileItem } from "./type";
 import { encodeKey, extractFilename } from "./utils";
 
@@ -65,6 +75,10 @@ export enum OpenFileMethod {
 
 export type AppSettings = {
   openFileMethod: OpenFileMethod;
+  viewMode: ViewMode;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  groupBy: GroupBy;
 };
 
 export enum PreviewKind {
@@ -83,7 +97,27 @@ export enum PreviewKind {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   openFileMethod: OpenFileMethod.Internal,
+  viewMode: DEFAULT_VIEW_MODE,
+  sortField: DEFAULT_SORT_FIELD,
+  sortDirection: DEFAULT_SORT_DIRECTION,
+  groupBy: DEFAULT_GROUP_BY,
 };
+
+/**
+ * Checks whether a parsed setting belongs to a string enum
+ * @param enumObject Runtime enum object to check
+ * @param value Parsed setting value from storage
+ * @returns Whether the value is a known enum member
+ */
+function isEnumValue<TEnum extends Record<string, string>>(
+  enumObject: TEnum,
+  value: unknown
+): value is TEnum[keyof TEnum] {
+  return (
+    typeof value === "string" &&
+    (Object.values(enumObject) as string[]).includes(value)
+  );
+}
 
 /**
  * Reads app settings from localStorage with a safe fallback
@@ -95,17 +129,26 @@ export function loadAppSettings(): AppSettings {
     if (!rawSettings) return DEFAULT_APP_SETTINGS;
 
     const parsed = JSON.parse(rawSettings) as Partial<AppSettings>;
-    if (
-      parsed.openFileMethod === OpenFileMethod.Internal ||
-      parsed.openFileMethod === OpenFileMethod.External
-    ) {
-      return { openFileMethod: parsed.openFileMethod };
-    }
+    return {
+      openFileMethod: isEnumValue(OpenFileMethod, parsed.openFileMethod)
+        ? parsed.openFileMethod
+        : DEFAULT_APP_SETTINGS.openFileMethod,
+      viewMode: isEnumValue(ViewMode, parsed.viewMode)
+        ? parsed.viewMode
+        : DEFAULT_APP_SETTINGS.viewMode,
+      sortField: isEnumValue(SortField, parsed.sortField)
+        ? parsed.sortField
+        : DEFAULT_APP_SETTINGS.sortField,
+      sortDirection: isEnumValue(SortDirection, parsed.sortDirection)
+        ? parsed.sortDirection
+        : DEFAULT_APP_SETTINGS.sortDirection,
+      groupBy: isEnumValue(GroupBy, parsed.groupBy)
+        ? parsed.groupBy
+        : DEFAULT_APP_SETTINGS.groupBy,
+    };
   } catch {
     return DEFAULT_APP_SETTINGS;
   }
-
-  return DEFAULT_APP_SETTINGS;
 }
 
 /**

@@ -22,18 +22,16 @@ import { extractFilename, humanReadableSize, isDirectory } from "./app/utils";
  */
 function FileGrid({
   files,
-  onCwdChange,
-  onOpenFile,
   multiSelected,
-  onMultiSelect,
+  onFileClick,
+  onFileContextMenu,
   emptyMessage,
   bottomPadding = "48px",
 }: {
   files: FileItem[];
-  onCwdChange: (newCwd: string) => void;
-  onOpenFile: (file: FileItem) => void;
   multiSelected: string[] | null;
-  onMultiSelect: (key: string) => void;
+  onFileClick: (file: FileItem, event: React.MouseEvent) => void;
+  onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
   emptyMessage?: React.ReactNode;
   bottomPadding?: React.CSSProperties["paddingBottom"];
 }) {
@@ -47,19 +45,12 @@ function FileGrid({
         return (
           <Grid key={file.key} size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }}>
             <ListItemButton
+              data-file-key={file.key}
               selected={multiSelected?.includes(file.key)}
-              onClick={() => {
-                if (multiSelected !== null) {
-                  onMultiSelect(file.key);
-                } else if (isDirectory(file)) {
-                  onCwdChange(file.key + "/");
-                } else {
-                  onOpenFile(file);
-                }
-              }}
+              onClick={(event) => onFileClick(file, event)}
               onContextMenu={(e) => {
                 e.preventDefault();
-                onMultiSelect(file.key);
+                onFileContextMenu(file, e);
               }}
               sx={{ alignItems: "center", gap: 1, userSelect: "none" }}>
               <ListItemIcon sx={{ flexShrink: 0, minWidth: 0 }}>

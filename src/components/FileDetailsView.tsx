@@ -7,7 +7,7 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import MimeIcon from "../MimeIcon";
 import { THUMBNAIL_PATH_PREFIX, WEBDAV_ENDPOINT } from "../app/constants";
@@ -30,17 +30,15 @@ import {
  */
 function FileDetailsView({
   files,
-  onCwdChange,
-  onOpenFile,
   multiSelected,
-  onMultiSelect,
+  onFileClick,
+  onFileContextMenu,
   showHeader = true,
 }: {
   files: FileItem[];
-  onCwdChange: (newCwd: string) => void;
-  onOpenFile: (file: FileItem) => void;
   multiSelected: string[] | null;
-  onMultiSelect: (key: string) => void;
+  onFileClick: (file: FileItem, event: MouseEvent) => void;
+  onFileContextMenu: (file: FileItem, event: MouseEvent) => void;
   showHeader?: boolean;
 }) {
   return (
@@ -72,21 +70,14 @@ function FileDetailsView({
 
             return (
               <TableRow
+                data-file-key={file.key}
                 hover
                 key={file.key}
                 selected={multiSelected?.includes(file.key)}
-                onClick={() => {
-                  if (multiSelected !== null) {
-                    onMultiSelect(file.key);
-                  } else if (isDirectory(file)) {
-                    onCwdChange(`${file.key}/`);
-                  } else {
-                    onOpenFile(file);
-                  }
-                }}
+                onClick={(event) => onFileClick(file, event)}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  onMultiSelect(file.key);
+                  onFileContextMenu(file, event);
                 }}
                 sx={{
                   cursor: "default",
