@@ -27,18 +27,38 @@ function FileGrid({
   showSelectionCheckbox,
   onFileClick,
   onFileContextMenu,
+  onFileDragEnd,
+  onFileDragLeave,
+  onFileDragOver,
+  onFileDragStart,
+  onFileDrop,
   onSelectionCheckboxClick,
   emptyMessage,
   bottomPadding = "48px",
+  draggableFiles,
+  dragOverDirectoryKey,
 }: {
   files: FileItem[];
   multiSelected: string[] | null;
   showSelectionCheckbox: boolean;
   onFileClick: (file: FileItem, event: React.MouseEvent) => void;
   onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
+  onFileDragEnd: () => void;
+  onFileDragLeave: (
+    file: FileItem,
+    event: React.DragEvent<HTMLElement>
+  ) => void;
+  onFileDragOver: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
+  onFileDragStart: (
+    file: FileItem,
+    event: React.DragEvent<HTMLElement>
+  ) => void;
+  onFileDrop: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
   onSelectionCheckboxClick: (file: FileItem) => void;
   emptyMessage?: React.ReactNode;
   bottomPadding?: React.CSSProperties["paddingBottom"];
+  draggableFiles: boolean;
+  dragOverDirectoryKey: string | null;
 }) {
   return files.length === 0 ? (
     emptyMessage
@@ -52,13 +72,29 @@ function FileGrid({
           <Grid key={file.key} size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }}>
             <ListItemButton
               data-file-key={file.key}
+              draggable={draggableFiles}
               selected={selected}
               onClick={(event) => onFileClick(file, event)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 onFileContextMenu(file, e);
               }}
-              sx={{ alignItems: "center", gap: 1, userSelect: "none" }}>
+              onDragEnd={onFileDragEnd}
+              onDragLeave={(event) => onFileDragLeave(file, event)}
+              onDragOver={(event) => onFileDragOver(file, event)}
+              onDragStart={(event) => onFileDragStart(file, event)}
+              onDrop={(event) => onFileDrop(file, event)}
+              sx={{
+                alignItems: "center",
+                gap: 1,
+                outline:
+                  dragOverDirectoryKey === file.key && isDirectory(file)
+                    ? "2px solid"
+                    : undefined,
+                outlineColor: "primary.main",
+                outlineOffset: -2,
+                userSelect: "none",
+              }}>
               <ListItemIcon sx={{ flexShrink: 0, minWidth: 0 }}>
                 {file.customMetadata?.thumbnail ? (
                   <img

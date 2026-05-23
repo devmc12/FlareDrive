@@ -8,7 +8,7 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import type { MouseEvent, ReactNode } from "react";
+import type { DragEvent, MouseEvent, ReactNode } from "react";
 
 import MimeIcon from "../MimeIcon";
 import { THUMBNAIL_PATH_PREFIX, WEBDAV_ENDPOINT } from "../app/constants";
@@ -35,16 +35,30 @@ function FileDetailsView({
   showSelectionCheckbox,
   onFileClick,
   onFileContextMenu,
+  onFileDragEnd,
+  onFileDragLeave,
+  onFileDragOver,
+  onFileDragStart,
+  onFileDrop,
   onSelectionCheckboxClick,
   showHeader = true,
+  draggableFiles,
+  dragOverDirectoryKey,
 }: {
   files: FileItem[];
   multiSelected: string[] | null;
   showSelectionCheckbox: boolean;
   onFileClick: (file: FileItem, event: MouseEvent) => void;
   onFileContextMenu: (file: FileItem, event: MouseEvent) => void;
+  onFileDragEnd: () => void;
+  onFileDragLeave: (file: FileItem, event: DragEvent<HTMLElement>) => void;
+  onFileDragOver: (file: FileItem, event: DragEvent<HTMLElement>) => void;
+  onFileDragStart: (file: FileItem, event: DragEvent<HTMLElement>) => void;
+  onFileDrop: (file: FileItem, event: DragEvent<HTMLElement>) => void;
   onSelectionCheckboxClick: (file: FileItem) => void;
   showHeader?: boolean;
+  draggableFiles: boolean;
+  dragOverDirectoryKey: string | null;
 }) {
   return (
     <TableContainer sx={{ overflowX: "auto" }}>
@@ -78,6 +92,7 @@ function FileDetailsView({
             return (
               <TableRow
                 data-file-key={file.key}
+                draggable={draggableFiles}
                 hover
                 key={file.key}
                 selected={selected}
@@ -86,8 +101,19 @@ function FileDetailsView({
                   event.preventDefault();
                   onFileContextMenu(file, event);
                 }}
+                onDragEnd={onFileDragEnd}
+                onDragLeave={(event) => onFileDragLeave(file, event)}
+                onDragOver={(event) => onFileDragOver(file, event)}
+                onDragStart={(event) => onFileDragStart(file, event)}
+                onDrop={(event) => onFileDrop(file, event)}
                 sx={{
                   cursor: "default",
+                  outline:
+                    dragOverDirectoryKey === file.key && isDirectory(file)
+                      ? "2px solid"
+                      : undefined,
+                  outlineColor: "primary.main",
+                  outlineOffset: -2,
                   userSelect: "none",
                   "&.Mui-selected": {
                     backgroundColor: "action.selected",

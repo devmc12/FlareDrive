@@ -48,7 +48,7 @@ function App() {
     ProgressDialogTab.Downloads
   );
   const [bottomActionBarOpen, setBottomActionBarOpen] = useState(false);
-  const [selectionModeOpen, setSelectionModeOpen] = useState(false);
+  const [operationModeOpen, setOperationModeOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -85,7 +85,7 @@ function App() {
       {globalStyles}
       <TransferQueueProvider>
         <Stack sx={{ height: "100%" }}>
-          {!selectionModeOpen && (
+          {!operationModeOpen && (
             <Header
               search={search}
               onSearchChange={(newSearch: string) => setSearch(newSearch)}
@@ -113,7 +113,7 @@ function App() {
             sortDirection={settings.sortDirection}
             groupBy={settings.groupBy}
             onBottomActionBarVisibilityChange={setBottomActionBarOpen}
-            onSelectionModeVisibilityChange={setSelectionModeOpen}
+            onOperationModeVisibilityChange={setOperationModeOpen}
           />
         </Stack>
         <Snackbar

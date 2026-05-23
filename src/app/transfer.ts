@@ -404,10 +404,15 @@ export async function copyPaste(source: string, target: string, move = false) {
     `${WEBDAV_ENDPOINT}${encodeKey(target)}`,
     window.location.href
   );
-  await fetch(uploadUrl, {
+  const response = await fetch(uploadUrl, {
     method: move ? "MOVE" : "COPY",
-    headers: { Destination: destinationUrl.href },
+    headers: { Depth: "infinity", Destination: destinationUrl.href },
   });
+  if (response.ok) return;
+
+  const errorText = await response.text();
+  const action = move ? "Move" : "Copy";
+  throw new Error(errorText || `${action} ${source} failed`);
 }
 
 /**
