@@ -1,5 +1,6 @@
 import {
   Box,
+  Checkbox,
   Table,
   TableBody,
   TableCell,
@@ -31,14 +32,18 @@ import {
 function FileDetailsView({
   files,
   multiSelected,
+  showSelectionCheckbox,
   onFileClick,
   onFileContextMenu,
+  onSelectionCheckboxClick,
   showHeader = true,
 }: {
   files: FileItem[];
   multiSelected: string[] | null;
+  showSelectionCheckbox: boolean;
   onFileClick: (file: FileItem, event: MouseEvent) => void;
   onFileContextMenu: (file: FileItem, event: MouseEvent) => void;
+  onSelectionCheckboxClick: (file: FileItem) => void;
   showHeader?: boolean;
 }) {
   return (
@@ -53,7 +58,7 @@ function FileDetailsView({
             paddingY: 0.5,
           },
         }}>
-        <FileDetailsColGroup />
+        <FileDetailsColGroup showSelectionCheckbox={showSelectionCheckbox} />
         {showHeader && (
           <TableHead>
             <TableRow>
@@ -61,19 +66,21 @@ function FileDetailsView({
               <HeaderCell>Modified Date</HeaderCell>
               <HeaderCell>Type</HeaderCell>
               <HeaderCell>Size</HeaderCell>
+              {showSelectionCheckbox && <HeaderCell />}
             </TableRow>
           </TableHead>
         )}
         <TableBody>
           {files.map((file) => {
             const filename = extractFilename(file.key);
+            const selected = multiSelected?.includes(file.key) ?? false;
 
             return (
               <TableRow
                 data-file-key={file.key}
                 hover
                 key={file.key}
-                selected={multiSelected?.includes(file.key)}
+                selected={selected}
                 onClick={(event) => onFileClick(file, event)}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -114,6 +121,17 @@ function FileDetailsView({
                 <TableCell>
                   {isDirectory(file) ? "" : humanReadableSize(file.size)}
                 </TableCell>
+                {showSelectionCheckbox && (
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selected}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectionCheckboxClick(file);
+                      }}
+                    />
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
@@ -126,7 +144,11 @@ function FileDetailsView({
 /**
  * Renders a standalone details header for grouped details mode
  */
-export function FileDetailsHeader() {
+export function FileDetailsHeader({
+  showSelectionCheckbox = false,
+}: {
+  showSelectionCheckbox?: boolean;
+}) {
   return (
     <TableContainer sx={{ overflowX: "auto" }}>
       <Table
@@ -139,13 +161,14 @@ export function FileDetailsHeader() {
             paddingY: 0.5,
           },
         }}>
-        <FileDetailsColGroup />
+        <FileDetailsColGroup showSelectionCheckbox={showSelectionCheckbox} />
         <TableHead>
           <TableRow>
             <HeaderCell>Name</HeaderCell>
             <HeaderCell>Modified Date</HeaderCell>
             <HeaderCell>Type</HeaderCell>
             <HeaderCell>Size</HeaderCell>
+            {showSelectionCheckbox && <HeaderCell />}
           </TableRow>
         </TableHead>
       </Table>
@@ -156,13 +179,18 @@ export function FileDetailsHeader() {
 /**
  * Keeps details column widths consistent across grouped and flat tables
  */
-function FileDetailsColGroup() {
+function FileDetailsColGroup({
+  showSelectionCheckbox = false,
+}: {
+  showSelectionCheckbox?: boolean;
+}) {
   return (
     <colgroup>
-      <col style={{ width: "42%" }} />
+      <col style={{ width: showSelectionCheckbox ? "38%" : "42%" }} />
       <col style={{ width: "24%" }} />
       <col style={{ width: "20%" }} />
-      <col style={{ width: "14%" }} />
+      <col style={{ width: showSelectionCheckbox ? "10%" : "14%" }} />
+      {showSelectionCheckbox && <col style={{ width: 48 }} />}
     </colgroup>
   );
 }
@@ -170,7 +198,7 @@ function FileDetailsColGroup() {
 /**
  * Renders a muted table header cell
  */
-function HeaderCell({ children }: { children: ReactNode }) {
+function HeaderCell({ children }: { children?: ReactNode }) {
   return (
     <TableCell
       sx={{

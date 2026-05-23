@@ -1,5 +1,6 @@
 import {
   Box,
+  Checkbox,
   Grid,
   ListItemButton,
   ListItemIcon,
@@ -23,15 +24,19 @@ import { extractFilename, humanReadableSize, isDirectory } from "./app/utils";
 function FileGrid({
   files,
   multiSelected,
+  showSelectionCheckbox,
   onFileClick,
   onFileContextMenu,
+  onSelectionCheckboxClick,
   emptyMessage,
   bottomPadding = "48px",
 }: {
   files: FileItem[];
   multiSelected: string[] | null;
+  showSelectionCheckbox: boolean;
   onFileClick: (file: FileItem, event: React.MouseEvent) => void;
   onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
+  onSelectionCheckboxClick: (file: FileItem) => void;
   emptyMessage?: React.ReactNode;
   bottomPadding?: React.CSSProperties["paddingBottom"];
 }) {
@@ -41,12 +46,13 @@ function FileGrid({
     <Grid container sx={{ paddingBottom: bottomPadding }}>
       {files.map((file) => {
         const filename = extractFilename(file.key);
+        const selected = multiSelected?.includes(file.key) ?? false;
 
         return (
           <Grid key={file.key} size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 2 }}>
             <ListItemButton
               data-file-key={file.key}
-              selected={multiSelected?.includes(file.key)}
+              selected={selected}
               onClick={(event) => onFileClick(file, event)}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -92,6 +98,16 @@ function FileGrid({
                   </React.Fragment>
                 }
               />
+              {showSelectionCheckbox && (
+                <Checkbox
+                  edge="end"
+                  checked={selected}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelectionCheckboxClick(file);
+                  }}
+                />
+              )}
             </ListItemButton>
           </Grid>
         );

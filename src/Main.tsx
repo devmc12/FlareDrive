@@ -17,6 +17,7 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  Toolbar,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -201,6 +202,19 @@ function getIntersectingFileKeys(
 }
 
 /**
+ * Checks whether a keyboard shortcut started inside editable UI
+ * @param target Keyboard event target
+ * @returns Whether text editing should keep the shortcut
+ */
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+
+  return Boolean(
+    target.closest("input,textarea,select,[contenteditable='true']")
+  );
+}
+
+/**
  * Renders clickable path segments for the current directory
  */
 function PathBreadcrumb({
@@ -283,6 +297,7 @@ function DropZone({
 function FileActionContextMenu({
   contextMenu,
   selectedCount,
+  downloadCount,
   downloadDisabled,
   renameDisabled,
   copyLinkDisabled,
@@ -294,6 +309,7 @@ function FileActionContextMenu({
 }: {
   contextMenu: FileContextMenuState;
   selectedCount: number;
+  downloadCount: number;
   downloadDisabled: boolean;
   renameDisabled: boolean;
   copyLinkDisabled: boolean;
@@ -326,7 +342,7 @@ function FileActionContextMenu({
           <DownloadIcon fontSize="small" />
         </ListItemIcon>
         <ListItemText>
-          {selectedCount > 1 ? `Download ${selectedCount} items` : "Download"}
+          {downloadCount > 1 ? `Download ${downloadCount} files` : "Download"}
         </ListItemText>
       </MenuItem>
       <MenuItem disabled={!selectedCount} onClick={onDelete}>
@@ -346,6 +362,58 @@ function FileActionContextMenu({
 }
 
 /**
+ * Renders the header shown while file selection mode is active
+ */
+function SelectionModeToolbar({
+  selectedCount,
+  totalCount,
+  onSelectAll,
+  onRangeSelect,
+  onCancel,
+}: {
+  selectedCount: number;
+  totalCount: number;
+  onSelectAll: () => void;
+  onRangeSelect: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Toolbar
+      disableGutters
+      sx={{
+        backgroundColor: "primary.main",
+        color: "primary.contrastText",
+        columnGap: 1,
+        minHeight: { xs: 56, sm: 64 },
+        paddingX: 1.5,
+      }}>
+      <Typography
+        component="div"
+        sx={{
+          flexGrow: 1,
+          fontSize: { xs: 18, sm: 20 },
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+        }}>
+        {selectedCount}/{totalCount} selected
+      </Typography>
+      <Button color="inherit" disabled={!totalCount} onClick={onSelectAll}>
+        Select All
+      </Button>
+      <Button
+        color="inherit"
+        disabled={selectedCount < 2}
+        onClick={onRangeSelect}>
+        Range Select
+      </Button>
+      <Button color="inherit" onClick={onCancel}>
+        Cancel
+      </Button>
+    </Toolbar>
+  );
+}
+
+/**
  * Coordinates WebDAV file loading, display organization, and file actions
  */
 function Main({
@@ -358,6 +426,7 @@ function Main({
   sortDirection,
   groupBy,
   onBottomActionBarVisibilityChange,
+  onSelectionModeVisibilityChange,
 }: {
   search: string;
   onError: (error: Error) => void;
@@ -368,6 +437,7 @@ function Main({
   sortDirection: SortDirection;
   groupBy: GroupBy;
   onBottomActionBarVisibilityChange: (open: boolean) => void;
+  onSelectionModeVisibilityChange: (open: boolean) => void;
 }) {
   const [cwd, setCwd] = useState(() =>
     decodeDirectoryHash(window.location.hash)
@@ -399,6 +469,11 @@ function Main({
     );
     return () => onBottomActionBarVisibilityChange(false);
   }, [isDesktopPointer, multiSelected, onBottomActionBarVisibilityChange]);
+
+  useEffect(() => {
+    onSelectionModeVisibilityChange(multiSelected !== null);
+    return () => onSelectionModeVisibilityChange(false);
+  }, [multiSelected, onSelectionModeVisibilityChange]);
 
   useEffect(() => {
     if (!isDesktopPointer) setContextMenu(null);
@@ -536,11 +611,15 @@ function Main({
   }, [files, multiSelected]);
 
   const selectedCount = multiSelected?.length ?? 0;
-  const selectedHasFolder = selectedFiles.some(isDirectory);
-  const canDownloadSelected =
-    selectedCount > 0 &&
-    selectedFiles.length === selectedCount &&
-    !selectedHasFolder;
+  const visibleFileCount = visibleFileKeys.length;
+  const downloadableSelectedKeys = useMemo(
+    () =>
+      selectedFiles
+        .filter((file) => !isDirectory(file))
+        .map((file) => file.key),
+    [selectedFiles]
+  );
+  const canDownloadSelected = downloadableSelectedKeys.length > 0;
 
   const toggleSelectedKey = useCallback((key: string) => {
     setMultiSelected((prev) => {
@@ -585,6 +664,30 @@ function Main({
     [lastSelectedKey, multiSelected, visibleFileKeys]
   );
 
+  const selectAllVisibleFiles = useCallback(() => {
+    if (!visibleFileKeys.length) return;
+
+    setMultiSelected(visibleFileKeys);
+    setLastSelectedKey(visibleFileKeys[visibleFileKeys.length - 1]);
+    setContextMenu(null);
+  }, [visibleFileKeys]);
+
+  const selectSelectedOuterRange = useCallback(() => {
+    if (!multiSelected || multiSelected.length < 2) return;
+
+    const selectedIndexes = multiSelected
+      .map((key) => visibleFileKeys.indexOf(key))
+      .filter((index) => index !== -1);
+    if (selectedIndexes.length < 2) return;
+
+    const startIndex = Math.min(...selectedIndexes);
+    const endIndex = Math.max(...selectedIndexes);
+    const rangeKeys = visibleFileKeys.slice(startIndex, endIndex + 1);
+    setMultiSelected(rangeKeys);
+    setLastSelectedKey(rangeKeys[rangeKeys.length - 1] ?? null);
+    setContextMenu(null);
+  }, [multiSelected, visibleFileKeys]);
+
   const handleOpenFile = useCallback(
     (file: FileItem) => {
       const previewKind = getPreviewKind(file);
@@ -620,11 +723,6 @@ function Main({
         return;
       }
 
-      if (!isDesktopPointer && multiSelected !== null) {
-        toggleSelectedKey(file.key);
-        return;
-      }
-
       setMultiSelected(null);
       setLastSelectedKey(null);
       setContextMenu(null);
@@ -636,14 +734,7 @@ function Main({
 
       handleOpenFile(file);
     },
-    [
-      handleOpenFile,
-      isDesktopPointer,
-      multiSelected,
-      navigateToCwd,
-      selectVisibleRange,
-      toggleSelectedKey,
-    ]
+    [handleOpenFile, navigateToCwd, selectVisibleRange, toggleSelectedKey]
   );
 
   const handleFileContextMenu = useCallback(
@@ -652,7 +743,6 @@ function Main({
       setLastSelectedKey(file.key);
 
       if (!isDesktopPointer) {
-        toggleSelectedKey(file.key);
         return;
       }
 
@@ -661,7 +751,14 @@ function Main({
       );
       setContextMenu({ mouseX: event.clientX + 2, mouseY: event.clientY - 6 });
     },
-    [isDesktopPointer, toggleSelectedKey]
+    [isDesktopPointer]
+  );
+
+  const handleSelectionCheckboxClick = useCallback(
+    (file: FileItem) => {
+      toggleSelectedKey(file.key);
+    },
+    [toggleSelectedKey]
   );
 
   const selectedRenameFile = useMemo(() => {
@@ -676,7 +773,20 @@ function Main({
   }, []);
 
   useEffect(() => {
-    const handleEscapeKey = (event: KeyboardEvent) => {
+    const handleSelectionShortcut = (event: KeyboardEvent) => {
+      if (
+        isDesktopPointer &&
+        event.key.toLowerCase() === "a" &&
+        (event.ctrlKey || event.metaKey) &&
+        !isEditableShortcutTarget(event.target)
+      ) {
+        if (!visibleFileKeys.length) return;
+
+        event.preventDefault();
+        selectAllVisibleFiles();
+        return;
+      }
+
       if (event.key !== "Escape") return;
       if (!contextMenu && multiSelected === null) return;
 
@@ -684,9 +794,17 @@ function Main({
       closeSelection();
     };
 
-    document.addEventListener("keydown", handleEscapeKey);
-    return () => document.removeEventListener("keydown", handleEscapeKey);
-  }, [closeSelection, contextMenu, multiSelected]);
+    document.addEventListener("keydown", handleSelectionShortcut);
+    return () =>
+      document.removeEventListener("keydown", handleSelectionShortcut);
+  }, [
+    closeSelection,
+    contextMenu,
+    isDesktopPointer,
+    multiSelected,
+    selectAllVisibleFiles,
+    visibleFileKeys.length,
+  ]);
 
   useEffect(() => {
     if (!isDesktopPointer || !contextMenu) return;
@@ -705,10 +823,10 @@ function Main({
   }, [contextMenu, isDesktopPointer]);
 
   const handleDownloadSelected = useCallback(() => {
-    if (!multiSelected || !canDownloadSelected) return;
-    multiSelected.forEach(downloadFileKey);
+    if (!canDownloadSelected) return;
+    downloadableSelectedKeys.forEach(downloadFileKey);
     setContextMenu(null);
-  }, [canDownloadSelected, multiSelected]);
+  }, [canDownloadSelected, downloadableSelectedKeys]);
 
   const handleRenameSelected = useCallback(() => {
     if (!selectedRenameFile) return;
@@ -828,6 +946,16 @@ function Main({
 
   return (
     <>
+      {multiSelected !== null && (
+        <SelectionModeToolbar
+          selectedCount={selectedCount}
+          totalCount={visibleFileCount}
+          onSelectAll={selectAllVisibleFiles}
+          onRangeSelect={selectSelectedOuterRange}
+          onCancel={closeSelection}
+        />
+      )}
+
       {cwd && <PathBreadcrumb path={cwd} onCwdChange={navigateToCwd} />}
 
       {loading ? (
@@ -849,7 +977,9 @@ function Main({
               groupBy={groupBy}
               onFileClick={handleFileClick}
               onFileContextMenu={handleFileContextMenu}
+              onSelectionCheckboxClick={handleSelectionCheckboxClick}
               multiSelected={multiSelected}
+              showSelectionCheckbox={!isDesktopPointer}
               emptyMessage={<Centered>No files or folders</Centered>}
               bottomPadding={fileBrowserBottomPadding}
             />
@@ -943,6 +1073,7 @@ function Main({
         <FileActionContextMenu
           contextMenu={contextMenu}
           selectedCount={selectedCount}
+          downloadCount={downloadableSelectedKeys.length}
           downloadDisabled={!canDownloadSelected}
           renameDisabled={!selectedRenameFile}
           copyLinkDisabled={selectedCount !== 1}
@@ -955,8 +1086,9 @@ function Main({
       ) : (
         <MultiSelectToolbar
           multiSelected={multiSelected}
+          renameDisabled={!selectedRenameFile}
           downloadDisabled={!canDownloadSelected}
-          onClose={closeSelection}
+          copyLinkDisabled={selectedCount !== 1}
           onDownload={handleDownloadSelected}
           onRename={handleRenameSelected}
           onDelete={() => void handleDeleteSelected()}
@@ -976,7 +1108,9 @@ function FileBrowserContent({
   groupBy,
   onFileClick,
   onFileContextMenu,
+  onSelectionCheckboxClick,
   multiSelected,
+  showSelectionCheckbox,
   emptyMessage,
   bottomPadding,
 }: {
@@ -985,7 +1119,9 @@ function FileBrowserContent({
   groupBy: GroupBy;
   onFileClick: (file: FileItem, event: React.MouseEvent) => void;
   onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
+  onSelectionCheckboxClick: (file: FileItem) => void;
   multiSelected: string[] | null;
+  showSelectionCheckbox: boolean;
   emptyMessage: React.ReactNode;
   bottomPadding: React.CSSProperties["paddingBottom"];
 }) {
@@ -1002,7 +1138,9 @@ function FileBrowserContent({
         viewMode={viewMode}
         onFileClick={onFileClick}
         onFileContextMenu={onFileContextMenu}
+        onSelectionCheckboxClick={onSelectionCheckboxClick}
         multiSelected={multiSelected}
+        showSelectionCheckbox={showSelectionCheckbox}
         showDetailsHeader
         bottomPadding={bottomPadding}
       />
@@ -1011,7 +1149,9 @@ function FileBrowserContent({
 
   return (
     <Box sx={{ paddingBottom: bottomPadding }}>
-      {viewMode === ViewMode.Details && <FileDetailsHeader />}
+      {viewMode === ViewMode.Details && (
+        <FileDetailsHeader showSelectionCheckbox={showSelectionCheckbox} />
+      )}
       {groups.map((group) => (
         <FileGroupSection
           key={group.id}
@@ -1022,7 +1162,9 @@ function FileBrowserContent({
             viewMode={viewMode}
             onFileClick={onFileClick}
             onFileContextMenu={onFileContextMenu}
+            onSelectionCheckboxClick={onSelectionCheckboxClick}
             multiSelected={multiSelected}
+            showSelectionCheckbox={showSelectionCheckbox}
             showDetailsHeader={false}
             bottomPadding={0}
           />
@@ -1040,7 +1182,9 @@ function FileView({
   viewMode,
   onFileClick,
   onFileContextMenu,
+  onSelectionCheckboxClick,
   multiSelected,
+  showSelectionCheckbox,
   showDetailsHeader,
   bottomPadding,
 }: {
@@ -1048,7 +1192,9 @@ function FileView({
   viewMode: ViewMode;
   onFileClick: (file: FileItem, event: React.MouseEvent) => void;
   onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
+  onSelectionCheckboxClick: (file: FileItem) => void;
   multiSelected: string[] | null;
+  showSelectionCheckbox: boolean;
   showDetailsHeader: boolean;
   bottomPadding: React.CSSProperties["paddingBottom"];
 }) {
@@ -1058,8 +1204,10 @@ function FileView({
         <FileDetailsView
           files={files}
           multiSelected={multiSelected}
+          showSelectionCheckbox={showSelectionCheckbox}
           onFileClick={onFileClick}
           onFileContextMenu={onFileContextMenu}
+          onSelectionCheckboxClick={onSelectionCheckboxClick}
           showHeader={showDetailsHeader}
         />
       </Box>
@@ -1070,8 +1218,10 @@ function FileView({
     <FileGrid
       files={files}
       multiSelected={multiSelected}
+      showSelectionCheckbox={showSelectionCheckbox}
       onFileClick={onFileClick}
       onFileContextMenu={onFileContextMenu}
+      onSelectionCheckboxClick={onSelectionCheckboxClick}
       bottomPadding={bottomPadding}
     />
   );

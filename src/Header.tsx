@@ -60,6 +60,9 @@ function Header({
           backgroundColor: "whitesmoke",
           borderRadius: "999px",
           padding: "8px 16px",
+          "& .MuiInputBase-input": {
+            padding: 0,
+          },
         }}
       />
       <IconButton

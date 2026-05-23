@@ -48,6 +48,7 @@ function App() {
     ProgressDialogTab.Downloads
   );
   const [bottomActionBarOpen, setBottomActionBarOpen] = useState(false);
+  const [selectionModeOpen, setSelectionModeOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -84,22 +85,24 @@ function App() {
       {globalStyles}
       <TransferQueueProvider>
         <Stack sx={{ height: "100%" }}>
-          <Header
-            search={search}
-            onSearchChange={(newSearch: string) => setSearch(newSearch)}
-            setShowProgressDialog={setShowProgressDialog}
-            viewMode={settings.viewMode}
-            sortField={settings.sortField}
-            sortDirection={settings.sortDirection}
-            groupBy={settings.groupBy}
-            onViewModeChange={(viewMode) => updateSettings({ viewMode })}
-            onSortFieldChange={(sortField) => updateSettings({ sortField })}
-            onSortDirectionChange={(sortDirection) =>
-              updateSettings({ sortDirection })
-            }
-            onGroupByChange={(groupBy) => updateSettings({ groupBy })}
-            onOpenSettings={() => setShowSettingsDialog(true)}
-          />
+          {!selectionModeOpen && (
+            <Header
+              search={search}
+              onSearchChange={(newSearch: string) => setSearch(newSearch)}
+              setShowProgressDialog={setShowProgressDialog}
+              viewMode={settings.viewMode}
+              sortField={settings.sortField}
+              sortDirection={settings.sortDirection}
+              groupBy={settings.groupBy}
+              onViewModeChange={(viewMode) => updateSettings({ viewMode })}
+              onSortFieldChange={(sortField) => updateSettings({ sortField })}
+              onSortDirectionChange={(sortDirection) =>
+                updateSettings({ sortDirection })
+              }
+              onGroupByChange={(groupBy) => updateSettings({ groupBy })}
+              onOpenSettings={() => setShowSettingsDialog(true)}
+            />
+          )}
           <Main
             search={search}
             onError={setError}
@@ -110,6 +113,7 @@ function App() {
             sortDirection={settings.sortDirection}
             groupBy={settings.groupBy}
             onBottomActionBarVisibilityChange={setBottomActionBarOpen}
+            onSelectionModeVisibilityChange={setSelectionModeOpen}
           />
         </Stack>
         <Snackbar
