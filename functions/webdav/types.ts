@@ -17,7 +17,7 @@ export interface RequestHandlerParams {
 /**
  * Access level assigned to a WebDAV access token
  */
-export type WebDavAccess = "ro" | "rw";
+export type WebDavAccess = "ro" | "rw" | "up";
 
 /**
  * Username and raw password parsed from a Basic Auth header

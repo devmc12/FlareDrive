@@ -38,7 +38,7 @@ WEBDAV_PASSWORD="admin"
 
 # Optional limited WebDAV credentials for clients you do not fully trust
 # Uncomment and replace each password with the SHA-256 of the raw token secret
-# WEBDAV_ACCESS_TOKENS='[{"username":"phone","password":"<sha256-hex>","access":"rw","includes":["photos/phone/"],"excludes":["photos/phone/private/"]},{"username":"reader","password":"<sha256-hex>","access":"ro","includes":["shared/"],"excludes":[]}]'
+# WEBDAV_ACCESS_TOKENS='[{"username":"phone","password":"<sha256-hex>","access":"rw","includes":["photos/phone/"],"excludes":["photos/phone/private/"]},{"username":"reader","password":"<sha256-hex>","access":"ro","includes":["shared/"],"excludes":[]},{"username":"dropbox","password":"<sha256-hex>","access":"up","includes":["uploads/"],"excludes":[]}]'
 ```
 
 Start the local app:
@@ -74,7 +74,8 @@ Access token fields:
 - `username`: the username entered in the WebDAV client
 - `password`: the SHA-256 hash of the raw token secret
 - `access`: `ro` for `GET`, `HEAD`, and `PROPFIND`; `rw` for all supported
-  WebDAV methods
+  WebDAV methods; `up` for upload-only `PUT`, multipart upload `POST`, and
+  multipart abort `DELETE`
 - `includes`: an array of R2 key prefixes the client can access
 - `excludes`: an array of R2 key prefixes the client cannot access, even when
   they are inside `includes`
@@ -84,6 +85,9 @@ For example, `test/abc` allows `test/abc` and `test/abc/file.txt`, but not
 `test/abcd/file.txt`. Excludes take priority over includes. Directory listings
 and recursive operations filter excluded descendants, and the server rejects
 requests outside the allowed scopes, including `COPY` and `MOVE` destinations.
+Upload-only `up` tokens cannot read files, list directories, create folders,
+copy, move, or delete existing files. Parent directories must already exist
+unless the upload target is at the bucket root.
 
 Clients using a limited token should connect directly to one of the included
 prefixes, such as `https://<your-domain.com>/webdav/photos/phone/`.

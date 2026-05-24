@@ -189,7 +189,9 @@ function parseAccessTokens(value?: string): WebDavAccessToken[] {
       typeof token.password !== "string" ||
       token.password.length !== SHA256_HEX_LENGTH ||
       !/^[a-fA-F0-9]+$/.test(token.password) ||
-      (token.access !== "ro" && token.access !== "rw") ||
+      (token.access !== "ro" &&
+        token.access !== "rw" &&
+        token.access !== "up") ||
       !Array.isArray(token.includes) ||
       token.includes.length === 0 ||
       !token.includes.every((include) => typeof include === "string") ||
@@ -250,6 +252,39 @@ function parseDestinationPath(request: Request) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Checks whether an upload-only token may use this request method
+ * @param request Incoming WebDAV request
+ * @returns Whether the request is part of a file upload flow
+ */
+function isUploadOnlyRequestAllowed(request: Request) {
+  if (request.method === "PUT") return true;
+
+  const searchParams = new URL(request.url).searchParams;
+  if (request.method === "POST") {
+    return searchParams.has("uploads") || searchParams.has("uploadId");
+  }
+
+  if (request.method === "DELETE") return searchParams.has("uploadId");
+
+  return false;
+}
+
+/**
+ * Checks whether a token access level allows the current request
+ * @param access Token access level
+ * @param request Incoming WebDAV request
+ * @returns Whether the request method is allowed
+ */
+function isRequestAllowedByAccess(
+  access: WebDavAccessToken["access"],
+  request: Request
+) {
+  if (access === "rw") return true;
+  if (access === "ro") return READ_METHODS.has(request.method);
+  return isUploadOnlyRequestAllowed(request);
 }
 
 /**
@@ -336,7 +371,7 @@ export async function authorizeWebDavRequest({
     return { ok: false, response: unauthorized() };
   }
 
-  if (token.access === "ro" && !READ_METHODS.has(request.method)) {
+  if (!isRequestAllowedByAccess(token.access, request)) {
     return { ok: false, response: forbidden() };
   }
 
