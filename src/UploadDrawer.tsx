@@ -9,7 +9,6 @@ import {
   Upload as UploadIcon,
 } from "@mui/icons-material";
 import { Box, Fab, Tooltip } from "@mui/material";
-import { createFolder } from "./app/transfer";
 import {
   createUploadSourceFromFiles,
   pickFolderUploadSource,
@@ -118,19 +117,17 @@ function UploadActionButton({
 function UploadDrawer({
   open,
   setOpen,
-  cwd,
-  onUpload,
   onUploadSource,
   onError,
   onOpenTextPad,
+  onCreateFolder,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
-  cwd: string;
-  onUpload: () => void;
   onUploadSource: (source: UploadSourceSelection) => void | Promise<void>;
   onError: (error: Error) => void;
   onOpenTextPad: () => void;
+  onCreateFolder: () => void;
 }) {
   const handleUploadError = useCallback(
     (error: unknown) => {
@@ -212,10 +209,9 @@ function UploadDrawer({
       {
         label: "Create folder",
         icon: <CreateNewFolderIcon />,
-        onClick: async () => {
+        onClick: () => {
           setOpen(false);
-          await createFolder(cwd);
-          onUpload();
+          onCreateFolder();
         },
         offsetX: -64,
         offsetY: 0,
@@ -239,9 +235,8 @@ function UploadDrawer({
       },
     ],
     [
-      cwd,
+      onCreateFolder,
       onOpenTextPad,
-      onUpload,
       pickFolder,
       setOpen,
       takePhoto,

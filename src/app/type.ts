@@ -39,3 +39,29 @@ export type BrowserMenuOption<TValue extends string> = {
   value: TValue;
   label: string;
 };
+
+/**
+ * Mouse position used by the desktop file action menu
+ */
+export type FileContextMenuState = {
+  mouseX: number;
+  mouseY: number;
+} | null;
+
+export type PasteOperationType = "move" | "copy";
+
+/**
+ * Source item stored by move and copy destination flows
+ */
+export type PasteOperationItem = {
+  key: string;
+  isDirectory: boolean;
+};
+
+/**
+ * Active move or copy operation waiting for a destination folder
+ */
+export type PasteOperation = {
+  type: PasteOperationType;
+  items: PasteOperationItem[];
+};

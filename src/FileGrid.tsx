@@ -33,7 +33,6 @@ function FileGrid({
   onFileDragStart,
   onFileDrop,
   onSelectionCheckboxClick,
-  emptyMessage,
   bottomPadding = "48px",
   draggableFiles,
   dragOverDirectoryKey,
@@ -55,14 +54,11 @@ function FileGrid({
   ) => void;
   onFileDrop: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
   onSelectionCheckboxClick: (file: FileItem) => void;
-  emptyMessage?: React.ReactNode;
   bottomPadding?: React.CSSProperties["paddingBottom"];
   draggableFiles: boolean;
   dragOverDirectoryKey: string | null;
 }) {
-  return files.length === 0 ? (
-    emptyMessage
-  ) : (
+  return (
     <Grid container sx={{ paddingBottom: bottomPadding }}>
       {files.map((file) => {
         const filename = extractFilename(file.key);

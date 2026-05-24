@@ -58,6 +58,9 @@ const TransferActionsContext = createContext({
 let nextTransferId = 1;
 let nextBatchId = 1;
 
+// Maximum upload tasks allowed to run at the same time
+const MAX_UPLOAD_CONCURRENCY = 3;
+
 /**
  * Creates a stable id for one queued transfer task
  * @returns Unique task id for the current browser session
@@ -124,7 +127,7 @@ export function TransferQueueProvider({
 }) {
   const [transferTasks, setTransferTasks] = useState<TransferTask[]>([]);
   const abortControllers = useRef(new Map<string, AbortController>());
-  const taskProcessing = useRef<string | null>(null);
+  const activeTaskIds = useRef(new Set<string>());
 
   const updateTask = useCallback(
     (
@@ -173,45 +176,57 @@ export function TransferQueueProvider({
   );
 
   useEffect(() => {
-    const taskToProcess = transferTasks.find(
-      (task) => task.status === "pending"
-    );
-    if (!taskToProcess || taskProcessing.current) return;
-    const abortController = new AbortController();
-    taskProcessing.current = taskToProcess.id;
-    abortControllers.current.set(taskToProcess.id, abortController);
+    const availableSlots = MAX_UPLOAD_CONCURRENCY - activeTaskIds.current.size;
+    if (availableSlots <= 0) return;
 
-    updateTask(taskToProcess.id, { status: "in-progress" });
+    const tasksToProcess = transferTasks
+      .filter(
+        (task) =>
+          task.type === "upload" &&
+          task.status === "pending" &&
+          !activeTaskIds.current.has(task.id)
+      )
+      .slice(0, availableSlots);
+    if (!tasksToProcess.length) return;
 
-    processTransferTask({
-      task: taskToProcess,
-      signal: abortController.signal,
-      onTaskProgress: ({ loaded, total }) => {
-        updateTask(taskToProcess.id, (task) =>
-          task.status === "canceled" ? task : { ...task, loaded, total }
-        );
-      },
-    })
-      .then(() => {
-        updateTask(taskToProcess.id, (task) =>
-          task.status === "canceled"
-            ? task
-            : { ...task, status: "completed", loaded: task.total }
-        );
+    tasksToProcess.forEach((taskToProcess) => {
+      const abortController = new AbortController();
+      activeTaskIds.current.add(taskToProcess.id);
+      abortControllers.current.set(taskToProcess.id, abortController);
+
+      updateTask(taskToProcess.id, (task) =>
+        task.status === "pending" ? { ...task, status: "in-progress" } : task
+      );
+
+      processTransferTask({
+        task: taskToProcess,
+        signal: abortController.signal,
+        onTaskProgress: ({ loaded, total }) => {
+          updateTask(taskToProcess.id, (task) =>
+            task.status === "canceled" ? task : { ...task, loaded, total }
+          );
+        },
       })
-      .catch((error) => {
-        const canceled = abortController.signal.aborted || isAbortError(error);
-        updateTask(taskToProcess.id, {
-          status: canceled ? "canceled" : "failed",
-          error: canceled ? undefined : error,
+        .then(() => {
+          updateTask(taskToProcess.id, (task) =>
+            task.status === "canceled"
+              ? task
+              : { ...task, status: "completed", loaded: task.total }
+          );
+        })
+        .catch((error) => {
+          const canceled =
+            abortController.signal.aborted || isAbortError(error);
+          updateTask(taskToProcess.id, {
+            status: canceled ? "canceled" : "failed",
+            error: canceled ? undefined : error,
+          });
+        })
+        .finally(() => {
+          abortControllers.current.delete(taskToProcess.id);
+          activeTaskIds.current.delete(taskToProcess.id);
         });
-      })
-      .finally(() => {
-        abortControllers.current.delete(taskToProcess.id);
-        if (taskProcessing.current === taskToProcess.id) {
-          taskProcessing.current = null;
-        }
-      });
+    });
   }, [transferTasks, updateTask]);
 
   return (

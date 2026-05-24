@@ -434,25 +434,6 @@ export async function createRemoteFolder(folderKey: string) {
 }
 
 /**
- * Prompts for a folder name and creates it inside the current directory
- * @param cwd Current directory key
- */
-export async function createFolder(cwd: string) {
-  try {
-    const folderName = window.prompt("Folder name");
-    if (!folderName) return;
-    if (folderName.includes("/")) {
-      window.alert("Invalid folder name");
-      return;
-    }
-    const folderKey = `${cwd}${folderName}`;
-    await createRemoteFolder(folderKey);
-  } catch {
-    console.log(`Create folder failed`);
-  }
-}
-
-/**
  * Processes an upload task including optional thumbnail generation
  * @param task Transfer task from the queue
  * @param onTaskProgress Optional upload progress callback

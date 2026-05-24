@@ -17,6 +17,7 @@ import {
   type AppSettings,
 } from "./app/preview";
 import { TransferQueueProvider } from "./app/transferQueue";
+import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsDialog from "./components/SettingsDialog";
 import UploadProgressBar from "./components/UploadProgressBar";
 
@@ -84,38 +85,56 @@ function App() {
       <CssBaseline />
       {globalStyles}
       <TransferQueueProvider>
-        <Stack sx={{ height: "100%" }}>
-          {!operationModeOpen && (
-            <Header
+        <ErrorBoundary>
+          <Stack sx={{ height: "100%" }}>
+            {!operationModeOpen && (
+              <Header
+                search={search}
+                onSearchChange={(newSearch: string) => setSearch(newSearch)}
+                setShowProgressDialog={setShowProgressDialog}
+                viewMode={settings.viewMode}
+                sortField={settings.sortField}
+                sortDirection={settings.sortDirection}
+                groupBy={settings.groupBy}
+                onViewModeChange={(viewMode) => updateSettings({ viewMode })}
+                onSortFieldChange={(sortField) => updateSettings({ sortField })}
+                onSortDirectionChange={(sortDirection) =>
+                  updateSettings({ sortDirection })
+                }
+                onGroupByChange={(groupBy) => updateSettings({ groupBy })}
+                onOpenSettings={() => setShowSettingsDialog(true)}
+              />
+            )}
+            <Main
               search={search}
-              onSearchChange={(newSearch: string) => setSearch(newSearch)}
-              setShowProgressDialog={setShowProgressDialog}
+              onError={setError}
+              onStatusMessage={setStatusMessage}
+              settings={settings}
               viewMode={settings.viewMode}
               sortField={settings.sortField}
               sortDirection={settings.sortDirection}
               groupBy={settings.groupBy}
-              onViewModeChange={(viewMode) => updateSettings({ viewMode })}
-              onSortFieldChange={(sortField) => updateSettings({ sortField })}
-              onSortDirectionChange={(sortDirection) =>
-                updateSettings({ sortDirection })
-              }
-              onGroupByChange={(groupBy) => updateSettings({ groupBy })}
-              onOpenSettings={() => setShowSettingsDialog(true)}
+              onBottomActionBarVisibilityChange={setBottomActionBarOpen}
+              onOperationModeVisibilityChange={setOperationModeOpen}
             />
-          )}
-          <Main
-            search={search}
-            onError={setError}
-            onStatusMessage={setStatusMessage}
-            settings={settings}
-            viewMode={settings.viewMode}
-            sortField={settings.sortField}
-            sortDirection={settings.sortDirection}
-            groupBy={settings.groupBy}
-            onBottomActionBarVisibilityChange={setBottomActionBarOpen}
-            onOperationModeVisibilityChange={setOperationModeOpen}
+          </Stack>
+          <ProgressDialog
+            open={showProgressDialog}
+            onClose={() => setShowProgressDialog(false)}
+            tab={progressDialogTab}
+            onTabChange={setProgressDialogTab}
           />
-        </Stack>
+          <UploadProgressBar
+            lifted={bottomActionBarOpen}
+            onOpenUploads={openUploadsProgress}
+          />
+          <SettingsDialog
+            open={showSettingsDialog}
+            settings={settings}
+            onChange={handleSettingsChange}
+            onClose={() => setShowSettingsDialog(false)}
+          />
+        </ErrorBoundary>
         <Snackbar
           autoHideDuration={5000}
           open={Boolean(error)}
@@ -127,22 +146,6 @@ function App() {
           open={Boolean(statusMessage)}
           message={statusMessage}
           onClose={() => setStatusMessage(null)}
-        />
-        <ProgressDialog
-          open={showProgressDialog}
-          onClose={() => setShowProgressDialog(false)}
-          tab={progressDialogTab}
-          onTabChange={setProgressDialogTab}
-        />
-        <UploadProgressBar
-          lifted={bottomActionBarOpen}
-          onOpenUploads={openUploadsProgress}
-        />
-        <SettingsDialog
-          open={showSettingsDialog}
-          settings={settings}
-          onChange={handleSettingsChange}
-          onClose={() => setShowSettingsDialog(false)}
         />
       </TransferQueueProvider>
     </ThemeProvider>

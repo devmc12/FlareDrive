@@ -1,42 +1,13 @@
-import {
-  ContentCopy as ContentCopyIcon,
-  ContentPaste as ContentPasteIcon,
-  CreateNewFolder as CreateNewFolderIcon,
-  Delete as DeleteIcon,
-  Download as DownloadIcon,
-  DriveFileMove as DriveFileMoveIcon,
-  FileCopy as FileCopyIcon,
-  Home as HomeIcon,
-  Refresh as RefreshIcon,
-  DriveFileRenameOutline as RenameIcon,
-} from "@mui/icons-material";
+import { Refresh as RefreshIcon } from "@mui/icons-material";
 import {
   Box,
-  Breadcrumbs,
-  Button,
   CircularProgress,
-  Divider,
   Fab,
-  Link,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
-  Slide,
-  Toolbar,
   Tooltip,
-  Typography,
   useMediaQuery,
 } from "@mui/material";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import FileGrid from "./FileGrid";
 import MultiSelectToolbar from "./MultiSelectToolbar";
 import UploadDrawer, { UploadFab } from "./UploadDrawer";
 import {
@@ -55,30 +26,53 @@ import {
 } from "./app/preview";
 import { copyPaste, createRemoteFolder, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
-import type { FileGroup, FileItem } from "./app/type";
+import type {
+  FileContextMenuState,
+  FileItem,
+  PasteOperation,
+  PasteOperationItem,
+  PasteOperationType,
+} from "./app/type";
 import {
   collectDataTransferUploadSource,
   getUploadDirectories,
   type UploadSourceSelection,
 } from "./app/uploadSources";
 import {
+  buildOperationTargetKey,
   compareFiles,
   decodeDirectoryHash,
+  downloadFileKey,
   encodeDirectoryHash,
   encodeKey,
   extractFilename,
+  getAbsoluteWebDavUrl,
   groupFiles,
+  INTERNAL_FILE_DRAG_TYPE,
   isDirectory,
+  isEditableShortcutTarget,
+  isInvalidOperationTarget,
+  parseDraggedOperationItems,
 } from "./app/utils";
-import FileDetailsView, {
-  FileDetailsHeader,
-} from "./components/FileDetailsView";
-import FileGroupSection from "./components/FileGroupSection";
+import Centered from "./components/Centered";
+import ConfirmDialog from "./components/ConfirmDialog";
+import CreateFolderDialog from "./components/CreateFolderDialog";
+import DropZone from "./components/DropZone";
+import FileActionContextMenu from "./components/FileActionContextMenu";
+import FileBrowserContent from "./components/FileBrowserContent";
 import FilePreviewDialog, {
   type FilePreviewTarget,
 } from "./components/FilePreviewDialog";
 import ImageViewerOverlay from "./components/ImageViewerOverlay";
+import {
+  PasteModeActionToolbar,
+  PasteModeToolbar,
+} from "./components/PasteModeBars";
+import PathBreadcrumb from "./components/PathBreadcrumb";
 import RenameDialog from "./components/RenameDialog";
+import SelectionModeToolbar from "./components/SelectionModeToolbar";
+import useFileSelection from "./hooks/useFileSelection";
+import useMarqueeSelection from "./hooks/useMarqueeSelection";
 
 /**
  * Date: 2024-07-02
@@ -86,561 +80,7 @@ import RenameDialog from "./components/RenameDialog";
  * Desc: Coordinates file browsing, display organization, upload entry points, and selection actions
  */
 
-/**
- * Centers loading or empty-state content inside the browser body
- */
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <Box
-      sx={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100%",
-      }}>
-      {children}
-    </Box>
-  );
-}
-
-type FileContextMenuState = {
-  mouseX: number;
-  mouseY: number;
-} | null;
-
-type PasteOperationType = "move" | "copy";
-
-type PasteOperationItem = {
-  key: string;
-  isDirectory: boolean;
-};
-
-type PasteOperation = {
-  type: PasteOperationType;
-  items: PasteOperationItem[];
-};
-
-type MarqueeSelection = {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-  append: boolean;
-  baseKeys: string[];
-};
-
-type MarqueeBox = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
-
-// Custom drag payload used to distinguish browser uploads from file moves
-const INTERNAL_FILE_DRAG_TYPE = "application/x-flaredrive-file-keys";
-
-/**
- * Builds the absolute browser-accessible WebDAV URL for a file key
- * @param key File or folder key relative to the WebDAV endpoint
- * @returns Absolute WebDAV URL
- */
-function getAbsoluteWebDavUrl(key: string) {
-  return new URL(
-    `${WEBDAV_ENDPOINT}${encodeKey(key)}`,
-    window.location.href
-  ).toString();
-}
-
-/**
- * Starts a browser download for one regular file
- * @param key File key relative to the WebDAV endpoint
- */
-function downloadFileKey(key: string) {
-  const anchor = document.createElement("a");
-  anchor.href = getAbsoluteWebDavUrl(key);
-  anchor.download = extractFilename(key);
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-}
-
-/**
- * Normalizes an object key for same-path comparisons
- * @param key WebDAV object key
- * @returns Object key without leading or trailing slashes
- */
-function normalizeObjectKey(key: string) {
-  return key.replace(/^\/+/, "").replace(/\/+$/, "");
-}
-
-/**
- * Normalizes a directory key for child target construction
- * @param key Directory key or root
- * @returns Directory key with a trailing slash when non-root
- */
-function normalizeTargetDirectoryKey(key: string) {
-  const normalizedKey = normalizeObjectKey(key);
-  return normalizedKey ? `${normalizedKey}/` : "";
-}
-
-/**
- * Builds the target object key for a paste-like operation
- * @param targetDirectoryKey Destination directory key
- * @param sourceKey Source object key
- * @returns Destination object key using the source basename
- */
-function buildOperationTargetKey(
-  targetDirectoryKey: string,
-  sourceKey: string
-) {
-  return `${normalizeTargetDirectoryKey(targetDirectoryKey)}${extractFilename(
-    sourceKey
-  )}`;
-}
-
-/**
- * Checks whether the target would place an item onto itself or inside itself
- * @param item Source operation item
- * @param targetDirectoryKey Destination directory key
- * @param targetKey Final destination object key
- * @returns Whether the transfer target is invalid
- */
-function isInvalidOperationTarget(
-  item: PasteOperationItem,
-  targetDirectoryKey: string,
-  targetKey: string
-) {
-  const sourceKey = normalizeObjectKey(item.key);
-  const normalizedTargetKey = normalizeObjectKey(targetKey);
-  if (sourceKey === normalizedTargetKey) return true;
-  if (!item.isDirectory) return false;
-
-  const sourcePrefix = `${sourceKey}/`;
-  const targetDirectory = normalizeTargetDirectoryKey(targetDirectoryKey);
-  return (
-    targetDirectory === sourcePrefix || targetDirectory.startsWith(sourcePrefix)
-  );
-}
-
-/**
- * Formats the operation title shown in paste mode
- * @param operation Active copy or move operation
- * @returns Human-readable operation summary
- */
-function formatPasteOperationTitle(operation: PasteOperation) {
-  const verb = operation.type === "move" ? "Move" : "Copy";
-  const count = operation.items.length;
-  return `${verb} ${count} ${count === 1 ? "item" : "items"}`;
-}
-
-/**
- * Parses the internal file drag payload if it belongs to this app
- * @param dataTransfer Browser drag data
- * @returns Dragged operation items
- */
-function parseDraggedOperationItems(dataTransfer: DataTransfer) {
-  if (!dataTransfer.types.includes(INTERNAL_FILE_DRAG_TYPE)) return [];
-
-  try {
-    const payload = JSON.parse(
-      dataTransfer.getData(INTERNAL_FILE_DRAG_TYPE)
-    ) as PasteOperationItem[];
-    return payload.filter(
-      (item) =>
-        item &&
-        typeof item.key === "string" &&
-        typeof item.isDirectory === "boolean"
-    );
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Preserves selection order while appending unique keys
- * @param baseKeys Existing selected keys
- * @param addedKeys New keys to merge into the selection
- * @returns Merged selection keys
- */
-function mergeSelectedKeys(baseKeys: string[], addedKeys: string[]) {
-  return Array.from(new Set([...baseKeys, ...addedKeys]));
-}
-
-/**
- * Normalizes two pointer positions into a client rectangle
- * @param selection Active marquee pointer state
- * @returns Rectangle measured in viewport coordinates
- */
-function getMarqueeClientRect(selection: MarqueeSelection): MarqueeBox {
-  const left = Math.min(selection.startX, selection.currentX);
-  const top = Math.min(selection.startY, selection.currentY);
-  const width = Math.abs(selection.currentX - selection.startX);
-  const height = Math.abs(selection.currentY - selection.startY);
-
-  return { left, top, width, height };
-}
-
-/**
- * Checks whether two viewport rectangles overlap
- * @param a First rectangle
- * @param b Second rectangle
- * @returns Whether the rectangles intersect
- */
-function rectanglesIntersect(a: MarqueeBox, b: DOMRect) {
-  return (
-    a.left < b.right &&
-    a.left + a.width > b.left &&
-    a.top < b.bottom &&
-    a.top + a.height > b.top
-  );
-}
-
-/**
- * Finds rendered file keys that intersect a marquee rectangle
- * @param container File browser container element
- * @param rectangle Marquee rectangle in viewport coordinates
- * @returns Intersecting file keys
- */
-function getIntersectingFileKeys(
-  container: HTMLElement,
-  rectangle: MarqueeBox
-) {
-  return Array.from(container.querySelectorAll<HTMLElement>("[data-file-key]"))
-    .filter((element) =>
-      rectanglesIntersect(rectangle, element.getBoundingClientRect())
-    )
-    .map((element) => element.dataset.fileKey)
-    .filter((key): key is string => Boolean(key));
-}
-
-/**
- * Checks whether a keyboard shortcut started inside editable UI
- * @param target Keyboard event target
- * @returns Whether text editing should keep the shortcut
- */
-function isEditableShortcutTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-
-  return Boolean(
-    target.closest("input,textarea,select,[contenteditable='true']")
-  );
-}
-
-/**
- * Renders clickable path segments for the current directory
- */
-function PathBreadcrumb({
-  path,
-  onCwdChange,
-}: {
-  path: string;
-  onCwdChange: (newCwd: string) => void;
-}) {
-  const parts = path.replace(/\/$/, "").split("/");
-
-  return (
-    <Breadcrumbs separator="›" sx={{ padding: 1 }}>
-      <Button onClick={() => onCwdChange("")} sx={{ minWidth: 0, padding: 0 }}>
-        <HomeIcon />
-      </Button>
-      {parts.map((part, index) =>
-        index === parts.length - 1 ? (
-          <Typography key={index} color="text.primary">
-            {part}
-          </Typography>
-        ) : (
-          <Link
-            key={index}
-            component="button"
-            onClick={() => {
-              onCwdChange(parts.slice(0, index + 1).join("/") + "/");
-            }}>
-            {part}
-          </Link>
-        )
-      )}
-    </Breadcrumbs>
-  );
-}
-
-/**
- * Wraps the browser body with drag-and-drop upload behavior
- */
-function DropZone({
-  children,
-  onDrop,
-}: {
-  children: React.ReactNode;
-  onDrop: (dataTransfer: DataTransfer) => void | Promise<void>;
-}) {
-  const [dragging, setDragging] = useState(false);
-
-  return (
-    <Box
-      sx={{
-        flexGrow: 1,
-        overflowY: "auto",
-        backgroundColor: (theme) => theme.palette.background.default,
-        filter: dragging ? "brightness(0.9)" : "none",
-        transition: "filter 0.2s",
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault();
-        if (e.dataTransfer.types.includes(INTERNAL_FILE_DRAG_TYPE)) return;
-        setDragging(true);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (e.dataTransfer.types.includes(INTERNAL_FILE_DRAG_TYPE)) {
-          e.dataTransfer.dropEffect = "none";
-          return;
-        }
-        e.dataTransfer.dropEffect = "copy";
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        if (e.dataTransfer.types.includes(INTERNAL_FILE_DRAG_TYPE)) {
-          setDragging(false);
-          return;
-        }
-        void onDrop(e.dataTransfer);
-        setDragging(false);
-      }}>
-      {children}
-    </Box>
-  );
-}
-
-/**
- * Renders the desktop file action menu for the active selection
- */
-function FileActionContextMenu({
-  contextMenu,
-  selectedCount,
-  downloadCount,
-  downloadDisabled,
-  renameDisabled,
-  copyLinkDisabled,
-  onClose,
-  onDownload,
-  onRename,
-  onDelete,
-  onCopyLink,
-  onMoveTo,
-  onCopyTo,
-}: {
-  contextMenu: FileContextMenuState;
-  selectedCount: number;
-  downloadCount: number;
-  downloadDisabled: boolean;
-  renameDisabled: boolean;
-  copyLinkDisabled: boolean;
-  onClose: () => void;
-  onDownload: () => void;
-  onRename: () => void;
-  onDelete: () => void;
-  onCopyLink: () => void;
-  onMoveTo: () => void;
-  onCopyTo: () => void;
-}) {
-  return (
-    <Menu
-      anchorReference="anchorPosition"
-      anchorPosition={
-        contextMenu
-          ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-          : undefined
-      }
-      open={Boolean(contextMenu)}
-      onClose={onClose}
-      slotProps={{ paper: { sx: { pointerEvents: "auto" } } }}
-      sx={{ pointerEvents: "none" }}>
-      <MenuItem disabled={renameDisabled} onClick={onRename}>
-        <ListItemIcon>
-          <RenameIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Rename</ListItemText>
-      </MenuItem>
-      <MenuItem disabled={downloadDisabled} onClick={onDownload}>
-        <ListItemIcon>
-          <DownloadIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>
-          {downloadCount > 1 ? `Download ${downloadCount} files` : "Download"}
-        </ListItemText>
-      </MenuItem>
-      <MenuItem disabled={!selectedCount} onClick={onDelete}>
-        <ListItemIcon>
-          <DeleteIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Delete</ListItemText>
-      </MenuItem>
-      <MenuItem disabled={copyLinkDisabled} onClick={onCopyLink}>
-        <ListItemIcon>
-          <ContentCopyIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Copy Link</ListItemText>
-      </MenuItem>
-      <Divider />
-      <MenuItem disabled={!selectedCount} onClick={onMoveTo}>
-        <ListItemIcon>
-          <DriveFileMoveIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Move to</ListItemText>
-      </MenuItem>
-      <MenuItem disabled={!selectedCount} onClick={onCopyTo}>
-        <ListItemIcon>
-          <FileCopyIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Copy to</ListItemText>
-      </MenuItem>
-    </Menu>
-  );
-}
-
-/**
- * Renders the header shown while file selection mode is active
- */
-function SelectionModeToolbar({
-  selectedCount,
-  totalCount,
-  onSelectAll,
-  onRangeSelect,
-  onCancel,
-}: {
-  selectedCount: number;
-  totalCount: number;
-  onSelectAll: () => void;
-  onRangeSelect: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Toolbar
-      disableGutters
-      sx={{
-        backgroundColor: "primary.main",
-        color: "primary.contrastText",
-        columnGap: 1,
-        minHeight: { xs: 56, sm: 64 },
-        paddingX: 1.5,
-      }}>
-      <Typography
-        component="div"
-        sx={{
-          flexGrow: 1,
-          fontSize: { xs: 18, sm: 20 },
-          fontWeight: 600,
-          whiteSpace: "nowrap",
-        }}>
-        {selectedCount}/{totalCount} selected
-      </Typography>
-      <Button color="inherit" disabled={!totalCount} onClick={onSelectAll}>
-        Select All
-      </Button>
-      <Button
-        color="inherit"
-        disabled={selectedCount < 2}
-        onClick={onRangeSelect}>
-        Range Select
-      </Button>
-      <Button color="inherit" onClick={onCancel}>
-        Cancel
-      </Button>
-    </Toolbar>
-  );
-}
-
-/**
- * Renders the header shown while choosing a copy or move destination
- */
-function PasteModeToolbar({ operation }: { operation: PasteOperation }) {
-  return (
-    <Toolbar
-      disableGutters
-      sx={{
-        backgroundColor: "primary.main",
-        color: "primary.contrastText",
-        columnGap: 1,
-        minHeight: { xs: 56, sm: 64 },
-        paddingX: 1.5,
-      }}>
-      <Box sx={{ minWidth: 0 }}>
-        <Typography
-          component="div"
-          sx={{
-            fontSize: { xs: 18, sm: 20 },
-            fontWeight: 600,
-            whiteSpace: "nowrap",
-          }}>
-          {formatPasteOperationTitle(operation)}
-        </Typography>
-        <Typography
-          component="div"
-          sx={{
-            fontSize: 12,
-            opacity: 0.86,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}>
-          Choose a destination folder
-        </Typography>
-      </Box>
-    </Toolbar>
-  );
-}
-
-/**
- * Renders bottom actions for the active copy or move destination flow
- */
-function PasteModeActionToolbar({
-  open,
-  busy,
-  onPaste,
-  onNewFolder,
-  onCancel,
-}: {
-  open: boolean;
-  busy: boolean;
-  onPaste: () => void;
-  onNewFolder: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Slide direction="up" in={open}>
-      <Toolbar
-        sx={{
-          backgroundColor: (theme) => theme.palette.background.paper,
-          borderTop: "1px solid lightgray",
-          bottom: 0,
-          columnGap: 0.5,
-          justifyContent: "space-evenly",
-          left: 0,
-          position: "fixed",
-          right: 0,
-          zIndex: 100,
-        }}>
-        <Button
-          disabled={busy}
-          startIcon={<ContentPasteIcon />}
-          onClick={onPaste}>
-          Paste
-        </Button>
-        <Button
-          disabled={busy}
-          startIcon={<CreateNewFolderIcon />}
-          onClick={onNewFolder}>
-          New Folder
-        </Button>
-        <Button disabled={busy} onClick={onCancel}>
-          Cancel
-        </Button>
-      </Toolbar>
-    </Slide>
-  );
-}
+type CreateFolderDialogContext = "upload" | "paste";
 
 /**
  * Coordinates WebDAV file loading, display organization, and file actions
@@ -673,7 +113,6 @@ function Main({
   );
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [multiSelected, setMultiSelected] = useState<string[] | null>(null);
   const [showUploadDrawer, setShowUploadDrawer] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<FilePreviewTarget | null>(
     null
@@ -681,9 +120,7 @@ function Main({
   const [imageViewerFile, setImageViewerFile] = useState<FileItem | null>(null);
   const [renameFile, setRenameFile] = useState<FileItem | null>(null);
   const [lastUploadKey, setLastUploadKey] = useState<string | null>(null);
-  const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<FileContextMenuState>(null);
-  const [marqueeBox, setMarqueeBox] = useState<MarqueeBox | null>(null);
   const [pasteOperation, setPasteOperation] = useState<PasteOperation | null>(
     null
   );
@@ -691,18 +128,115 @@ function Main({
   const [dragOverDirectoryKey, setDragOverDirectoryKey] = useState<
     string | null
   >(null);
-  const selectionSurfaceRef = useRef<HTMLDivElement | null>(null);
-  const marqueeRef = useRef<MarqueeSelection | null>(null);
+  const [createFolderContext, setCreateFolderContext] =
+    useState<CreateFolderDialogContext | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteTargetKeys, setDeleteTargetKeys] = useState<string[]>([]);
   const isDesktopPointer = useMediaQuery("(hover: hover) and (pointer: fine)");
 
   const transferQueue = useTransferQueue();
   const uploadEnqueue = useUploadEnqueue();
+
+  const displayGroups = useMemo(() => {
+    const filteredFiles = search
+      ? files.filter((file) =>
+          file.key.toLowerCase().includes(search.toLowerCase())
+        )
+      : files;
+
+    const groups = groupFiles(filteredFiles, groupBy);
+    return groups.map((group) => ({
+      ...group,
+      files: [...group.files].sort((a, b) =>
+        compareFiles(a, b, sortField, sortDirection)
+      ),
+    }));
+  }, [files, groupBy, search, sortDirection, sortField]);
+
+  const visibleFiles = useMemo(
+    () => displayGroups.flatMap((group) => group.files),
+    [displayGroups]
+  );
+
+  const visibleFileKeys = useMemo(
+    () => visibleFiles.map((file) => file.key),
+    [visibleFiles]
+  );
+
+  const fileByKey = useMemo(
+    () => new Map(files.map((file) => [file.key, file])),
+    [files]
+  );
+
+  const {
+    closeSelection,
+    ensureSelectedKey,
+    multiSelected,
+    replaceSelectedKeys,
+    selectAllVisibleFiles,
+    selectSelectedOuterRange,
+    selectedCount,
+    toggleSelectedKey,
+    selectVisibleRange,
+  } = useFileSelection(visibleFileKeys);
+
+  const selectedFiles = useMemo(() => {
+    if (!multiSelected) return [];
+
+    return multiSelected
+      .map((key) => fileByKey.get(key))
+      .filter((file): file is FileItem => Boolean(file));
+  }, [fileByKey, multiSelected]);
+
+  const visibleFileCount = visibleFileKeys.length;
+  const downloadableSelectedKeys = useMemo(
+    () =>
+      selectedFiles
+        .filter((file) => !isDirectory(file))
+        .map((file) => file.key),
+    [selectedFiles]
+  );
+  const canDownloadSelected = downloadableSelectedKeys.length > 0;
   const operationModeOpen = multiSelected !== null || pasteOperation !== null;
   const fileBrowserBottomPadding = pasteOperation
     ? "88px"
     : isDesktopPointer
       ? "72px"
       : "152px";
+
+  const closeActiveSelection = useCallback(() => {
+    closeSelection();
+    setContextMenu(null);
+  }, [closeSelection]);
+
+  const handleSelectAllVisibleFiles = useCallback(() => {
+    selectAllVisibleFiles();
+    setContextMenu(null);
+  }, [selectAllVisibleFiles]);
+
+  const handleSelectSelectedOuterRange = useCallback(() => {
+    selectSelectedOuterRange();
+    setContextMenu(null);
+  }, [selectSelectedOuterRange]);
+
+  const handleMarqueeStart = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const {
+    finishMarqueeSelection,
+    handleMarqueeScroll,
+    handleSelectionPointerDown,
+    handleSelectionPointerMove,
+    marqueeBox,
+    selectionSurfaceRef,
+  } = useMarqueeSelection({
+    disabled: !isDesktopPointer || Boolean(pasteOperation),
+    selectedKeys: multiSelected,
+    onSelectionChange: replaceSelectedKeys,
+    onSelectionStart: handleMarqueeStart,
+  });
 
   useEffect(() => {
     onBottomActionBarVisibilityChange(
@@ -755,13 +289,11 @@ function Main({
     fetchPath(cwd)
       .then((files) => {
         setFiles(files);
-        setMultiSelected(null);
-        setLastSelectedKey(null);
-        setContextMenu(null);
+        closeActiveSelection();
       })
       .catch(onError)
       .finally(() => setLoading(false));
-  }, [cwd, onError]);
+  }, [closeActiveSelection, cwd, onError]);
 
   useEffect(() => setLoading(true), [cwd]);
 
@@ -812,64 +344,24 @@ function Main({
 
   useEffect(() => {
     if (!transferQueue.length) return;
-    const lastFile = transferQueue[transferQueue.length - 1];
-    if (["pending", "in-progress"].includes(lastFile.status)) {
-      setLastUploadKey(lastFile.remoteKey);
-    } else if (lastUploadKey) {
+
+    const activeUploadTask = [...transferQueue]
+      .reverse()
+      .find(
+        (task) =>
+          task.type === "upload" &&
+          (task.status === "pending" || task.status === "in-progress")
+      );
+    if (activeUploadTask) {
+      setLastUploadKey(activeUploadTask.remoteKey);
+      return;
+    }
+
+    if (lastUploadKey) {
       fetchFiles();
       setLastUploadKey(null);
     }
-  }, [cwd, fetchFiles, lastUploadKey, transferQueue]);
-
-  const displayGroups = useMemo(() => {
-    const filteredFiles = search
-      ? files.filter((file) =>
-          file.key.toLowerCase().includes(search.toLowerCase())
-        )
-      : files;
-
-    const groups = groupFiles(filteredFiles, groupBy);
-    return groups.map((group) => ({
-      ...group,
-      files: [...group.files].sort((a, b) =>
-        compareFiles(a, b, sortField, sortDirection)
-      ),
-    }));
-  }, [files, groupBy, search, sortDirection, sortField]);
-
-  const visibleFiles = useMemo(
-    () => displayGroups.flatMap((group) => group.files),
-    [displayGroups]
-  );
-
-  const visibleFileKeys = useMemo(
-    () => visibleFiles.map((file) => file.key),
-    [visibleFiles]
-  );
-
-  const fileByKey = useMemo(
-    () => new Map(files.map((file) => [file.key, file])),
-    [files]
-  );
-
-  const selectedFiles = useMemo(() => {
-    if (!multiSelected) return [];
-
-    return multiSelected
-      .map((key) => fileByKey.get(key))
-      .filter((file): file is FileItem => Boolean(file));
-  }, [fileByKey, multiSelected]);
-
-  const selectedCount = multiSelected?.length ?? 0;
-  const visibleFileCount = visibleFileKeys.length;
-  const downloadableSelectedKeys = useMemo(
-    () =>
-      selectedFiles
-        .filter((file) => !isDirectory(file))
-        .map((file) => file.key),
-    [selectedFiles]
-  );
-  const canDownloadSelected = downloadableSelectedKeys.length > 0;
+  }, [fetchFiles, lastUploadKey, transferQueue]);
 
   const buildOperationItems = useCallback(
     (keys: string[]) =>
@@ -883,72 +375,10 @@ function Main({
     [fileByKey]
   );
 
-  const toggleSelectedKey = useCallback((key: string) => {
-    setMultiSelected((prev) => {
-      if (prev === null) return [key];
-      if (prev.includes(key)) {
-        const updated = prev.filter((k) => k !== key);
-        return updated.length ? updated : null;
-      }
-      return [...prev, key];
-    });
-    setLastSelectedKey(key);
-  }, []);
-
-  const selectVisibleRange = useCallback(
-    (targetKey: string, append: boolean) => {
-      const fallbackAnchor =
-        multiSelected?.find((key) => visibleFileKeys.includes(key)) ??
-        targetKey;
-      const anchorKey =
-        lastSelectedKey && visibleFileKeys.includes(lastSelectedKey)
-          ? lastSelectedKey
-          : fallbackAnchor;
-      const anchorIndex = visibleFileKeys.indexOf(anchorKey);
-      const targetIndex = visibleFileKeys.indexOf(targetKey);
-      if (anchorIndex === -1 || targetIndex === -1) {
-        setMultiSelected([targetKey]);
-        setLastSelectedKey(targetKey);
-        return;
-      }
-
-      const startIndex = Math.min(anchorIndex, targetIndex);
-      const endIndex = Math.max(anchorIndex, targetIndex);
-      const rangeKeys = visibleFileKeys.slice(startIndex, endIndex + 1);
-      setMultiSelected((prev) => {
-        const nextKeys = append
-          ? mergeSelectedKeys(prev ?? [], rangeKeys)
-          : rangeKeys;
-        return nextKeys.length ? nextKeys : null;
-      });
-      setLastSelectedKey(targetKey);
-    },
-    [lastSelectedKey, multiSelected, visibleFileKeys]
-  );
-
-  const selectAllVisibleFiles = useCallback(() => {
-    if (!visibleFileKeys.length) return;
-
-    setMultiSelected(visibleFileKeys);
-    setLastSelectedKey(visibleFileKeys[visibleFileKeys.length - 1]);
-    setContextMenu(null);
-  }, [visibleFileKeys]);
-
-  const selectSelectedOuterRange = useCallback(() => {
-    if (!multiSelected || multiSelected.length < 2) return;
-
-    const selectedIndexes = multiSelected
-      .map((key) => visibleFileKeys.indexOf(key))
-      .filter((index) => index !== -1);
-    if (selectedIndexes.length < 2) return;
-
-    const startIndex = Math.min(...selectedIndexes);
-    const endIndex = Math.max(...selectedIndexes);
-    const rangeKeys = visibleFileKeys.slice(startIndex, endIndex + 1);
-    setMultiSelected(rangeKeys);
-    setLastSelectedKey(rangeKeys[rangeKeys.length - 1] ?? null);
-    setContextMenu(null);
-  }, [multiSelected, visibleFileKeys]);
+  const selectedRenameFile = useMemo(() => {
+    if (selectedFiles.length !== 1 || selectedCount !== 1) return null;
+    return selectedFiles[0];
+  }, [selectedCount, selectedFiles]);
 
   const handleOpenFile = useCallback(
     (file: FileItem) => {
@@ -1009,9 +439,7 @@ function Main({
         return;
       }
 
-      setMultiSelected(null);
-      setLastSelectedKey(null);
-      setContextMenu(null);
+      closeActiveSelection();
 
       if (isDirectory(file)) {
         navigateToCwd(`${file.key}/`);
@@ -1021,6 +449,7 @@ function Main({
       handleOpenFile(file);
     },
     [
+      closeActiveSelection,
       handleOpenFile,
       isDesktopPointer,
       multiSelected,
@@ -1036,18 +465,14 @@ function Main({
       event.preventDefault();
       if (pasteOperation) return;
 
-      setLastSelectedKey(file.key);
-
       if (!isDesktopPointer) {
         return;
       }
 
-      setMultiSelected((prev) =>
-        prev?.includes(file.key) ? prev : [file.key]
-      );
+      ensureSelectedKey(file.key);
       setContextMenu({ mouseX: event.clientX + 2, mouseY: event.clientY - 6 });
     },
-    [isDesktopPointer, pasteOperation]
+    [ensureSelectedKey, isDesktopPointer, pasteOperation]
   );
 
   const handleSelectionCheckboxClick = useCallback(
@@ -1056,17 +481,6 @@ function Main({
     },
     [toggleSelectedKey]
   );
-
-  const selectedRenameFile = useMemo(() => {
-    if (selectedFiles.length !== 1 || selectedCount !== 1) return null;
-    return selectedFiles[0];
-  }, [selectedCount, selectedFiles]);
-
-  const closeSelection = useCallback(() => {
-    setMultiSelected(null);
-    setLastSelectedKey(null);
-    setContextMenu(null);
-  }, []);
 
   const startPasteOperation = useCallback(
     (type: PasteOperationType) => {
@@ -1077,9 +491,9 @@ function Main({
 
       setPasteOperation({ type, items });
       setShowUploadDrawer(false);
-      closeSelection();
+      closeActiveSelection();
     },
-    [buildOperationItems, closeSelection, multiSelected]
+    [buildOperationItems, closeActiveSelection, multiSelected]
   );
 
   const transferItemsToDirectory = useCallback(
@@ -1143,28 +557,28 @@ function Main({
     });
   }, [cwd, operationBusy, pasteOperation, transferItemsToDirectory]);
 
-  const handlePasteNewFolder = useCallback(async () => {
+  const handlePasteNewFolder = useCallback(() => {
     if (operationBusy) return;
 
-    const folderName = window.prompt("Folder name")?.trim();
-    if (!folderName) return;
-    if (/[\\/]/.test(folderName)) {
-      onError(new Error("Invalid folder name"));
-      return;
-    }
+    setCreateFolderContext("paste");
+  }, [operationBusy]);
 
-    try {
-      setOperationBusy(true);
-      await createRemoteFolder(`${cwd}${folderName}`);
-      fetchFiles();
-    } catch (error) {
-      onError(
-        error instanceof Error ? error : new Error("Create folder failed")
-      );
-    } finally {
-      setOperationBusy(false);
-    }
-  }, [cwd, fetchFiles, onError, operationBusy]);
+  const handleCreateFolderConfirm = useCallback(
+    async (folderName: string) => {
+      const activeContext = createFolderContext;
+      if (!activeContext) return;
+
+      if (activeContext === "paste") setOperationBusy(true);
+      try {
+        await createRemoteFolder(`${cwd}${folderName}`);
+        fetchFiles();
+        onStatusMessage("Folder created");
+      } finally {
+        if (activeContext === "paste") setOperationBusy(false);
+      }
+    },
+    [createFolderContext, cwd, fetchFiles, onStatusMessage]
+  );
 
   const cancelPasteOperation = useCallback(() => {
     setPasteOperation(null);
@@ -1271,13 +685,14 @@ function Main({
         if (!visibleFileKeys.length) return;
 
         event.preventDefault();
-        selectAllVisibleFiles();
+        handleSelectAllVisibleFiles();
         return;
       }
 
       if (event.key !== "Escape") return;
-      if (!contextMenu && multiSelected === null && pasteOperation === null)
+      if (!contextMenu && multiSelected === null && pasteOperation === null) {
         return;
+      }
 
       event.preventDefault();
       if (pasteOperation) {
@@ -1285,20 +700,20 @@ function Main({
         return;
       }
 
-      closeSelection();
+      closeActiveSelection();
     };
 
     document.addEventListener("keydown", handleSelectionShortcut);
     return () =>
       document.removeEventListener("keydown", handleSelectionShortcut);
   }, [
-    closeSelection,
     cancelPasteOperation,
+    closeActiveSelection,
     contextMenu,
+    handleSelectAllVisibleFiles,
     isDesktopPointer,
     multiSelected,
     pasteOperation,
-    selectAllVisibleFiles,
     visibleFileKeys.length,
   ]);
 
@@ -1330,27 +745,41 @@ function Main({
     setRenameFile(selectedRenameFile);
   }, [selectedRenameFile]);
 
-  const handleDeleteSelected = useCallback(async () => {
+  const handleDeleteSelected = useCallback(() => {
     if (!multiSelected?.length) return;
 
-    const filenames = multiSelected
-      .map((key) => extractFilename(key))
-      .join("\n");
-    const confirmMessage = "Delete the following file(s) permanently?";
-    if (!window.confirm(`${confirmMessage}\n${filenames}`)) return;
+    setDeleteTargetKeys(multiSelected);
+    setContextMenu(null);
+    setDeleteConfirmOpen(true);
+  }, [multiSelected]);
 
+  const handleCloseDeleteConfirm = useCallback(() => {
+    if (deleteBusy) return;
+
+    setDeleteConfirmOpen(false);
+    setDeleteTargetKeys([]);
+  }, [deleteBusy]);
+
+  const handleConfirmDeleteSelected = useCallback(async () => {
+    if (!deleteTargetKeys.length) return;
+
+    setDeleteBusy(true);
     try {
-      for (const key of multiSelected) {
+      for (const key of deleteTargetKeys) {
         await fetch(`${WEBDAV_ENDPOINT}${encodeKey(key)}`, {
           method: "DELETE",
         });
       }
-      setContextMenu(null);
+      setDeleteConfirmOpen(false);
+      setDeleteTargetKeys([]);
+      closeActiveSelection();
       fetchFiles();
     } catch (error) {
       onError(error instanceof Error ? error : new Error("Delete failed"));
+    } finally {
+      setDeleteBusy(false);
     }
-  }, [fetchFiles, multiSelected, onError]);
+  }, [closeActiveSelection, deleteTargetKeys, fetchFiles, onError]);
 
   const handleCopySelectedLink = useCallback(async () => {
     if (multiSelected?.length !== 1) return;
@@ -1375,78 +804,9 @@ function Main({
     startPasteOperation("copy");
   }, [startPasteOperation]);
 
-  const updateMarqueeSelection = useCallback((selection: MarqueeSelection) => {
-    const container = selectionSurfaceRef.current;
-    if (!container) return;
-
-    const rectangle = getMarqueeClientRect(selection);
-    setMarqueeBox(rectangle);
-
-    if (rectangle.width < 4 && rectangle.height < 4) return;
-
-    const intersectingKeys = getIntersectingFileKeys(container, rectangle);
-    const nextKeys = selection.append
-      ? mergeSelectedKeys(selection.baseKeys, intersectingKeys)
-      : intersectingKeys;
-    setMultiSelected(nextKeys.length ? nextKeys : null);
-  }, []);
-
-  const handleSelectionPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (pasteOperation) return;
-      if (!isDesktopPointer || event.button !== 0) return;
-      if (!(event.target instanceof Element)) return;
-      if (
-        event.target.closest("[data-file-key]") ||
-        event.target.closest("button,a,input,textarea,select,[role='button']")
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-      const append = event.ctrlKey || event.metaKey;
-      const selection = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        currentX: event.clientX,
-        currentY: event.clientY,
-        append,
-        baseKeys: append ? (multiSelected ?? []) : [],
-      };
-      marqueeRef.current = selection;
-      setMarqueeBox(null);
-      setContextMenu(null);
-      if (!append) setMultiSelected(null);
-      event.currentTarget.setPointerCapture(event.pointerId);
-    },
-    [isDesktopPointer, multiSelected, pasteOperation]
-  );
-
-  const handleSelectionPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const selection = marqueeRef.current;
-      if (!selection || selection.pointerId !== event.pointerId) return;
-
-      selection.currentX = event.clientX;
-      selection.currentY = event.clientY;
-      updateMarqueeSelection(selection);
-    },
-    [updateMarqueeSelection]
-  );
-
-  const finishMarqueeSelection = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const selection = marqueeRef.current;
-      if (!selection || selection.pointerId !== event.pointerId) return;
-
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      marqueeRef.current = null;
-      setMarqueeBox(null);
-    },
-    []
+  const deleteTargetNames = useMemo(
+    () => deleteTargetKeys.map((key) => extractFilename(key)),
+    [deleteTargetKeys]
   );
 
   return (
@@ -1455,9 +815,9 @@ function Main({
         <SelectionModeToolbar
           selectedCount={selectedCount}
           totalCount={visibleFileCount}
-          onSelectAll={selectAllVisibleFiles}
-          onRangeSelect={selectSelectedOuterRange}
-          onCancel={closeSelection}
+          onSelectAll={handleSelectAllVisibleFiles}
+          onRangeSelect={handleSelectSelectedOuterRange}
+          onCancel={closeActiveSelection}
         />
       ) : (
         pasteOperation && <PasteModeToolbar operation={pasteOperation} />
@@ -1470,7 +830,7 @@ function Main({
           <CircularProgress />
         </Centered>
       ) : (
-        <DropZone onDrop={handleDropUpload}>
+        <DropZone onDrop={handleDropUpload} onScroll={handleMarqueeScroll}>
           <Box
             ref={selectionSurfaceRef}
             sx={{ minHeight: "100%", position: "relative" }}
@@ -1492,7 +852,6 @@ function Main({
               onSelectionCheckboxClick={handleSelectionCheckboxClick}
               multiSelected={multiSelected}
               showSelectionCheckbox={!isDesktopPointer && !pasteOperation}
-              emptyMessage={<Centered>No files or folders</Centered>}
               bottomPadding={fileBrowserBottomPadding}
               draggableFiles={isDesktopPointer && !pasteOperation}
               dragOverDirectoryKey={dragOverDirectoryKey}
@@ -1503,8 +862,8 @@ function Main({
                   backgroundColor: "rgba(243, 128, 32, 0.12)",
                   border: "1px solid",
                   borderColor: "primary.main",
-                  left: marqueeBox.left,
                   height: marqueeBox.height,
+                  left: marqueeBox.left,
                   pointerEvents: "none",
                   position: "fixed",
                   top: marqueeBox.top,
@@ -1551,18 +910,34 @@ function Main({
         open={Boolean(pasteOperation)}
         busy={operationBusy}
         onPaste={handlePasteIntoCurrentFolder}
-        onNewFolder={() => void handlePasteNewFolder()}
+        onNewFolder={handlePasteNewFolder}
         onCancel={cancelPasteOperation}
       />
 
       <UploadDrawer
         open={showUploadDrawer}
         setOpen={setShowUploadDrawer}
-        cwd={cwd}
-        onUpload={fetchFiles}
         onUploadSource={handleUploadSource}
         onError={onError}
         onOpenTextPad={() => setPreviewTarget({ type: "textpad", cwd })}
+        onCreateFolder={() => setCreateFolderContext("upload")}
+      />
+
+      <CreateFolderDialog
+        open={Boolean(createFolderContext)}
+        onClose={() => setCreateFolderContext(null)}
+        onConfirm={handleCreateFolderConfirm}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete permanently"
+        message="Delete the following file(s) permanently?"
+        items={deleteTargetNames}
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        onClose={handleCloseDeleteConfirm}
+        onConfirm={() => void handleConfirmDeleteSelected()}
       />
 
       {previewTarget && (
@@ -1586,7 +961,7 @@ function Main({
         onClose={() => setRenameFile(null)}
         onConfirm={async (sourceKey, targetKey) => {
           await copyPaste(sourceKey, targetKey, true);
-          closeSelection();
+          closeActiveSelection();
           fetchFiles();
         }}
       />
@@ -1602,7 +977,7 @@ function Main({
           onClose={() => setContextMenu(null)}
           onDownload={handleDownloadSelected}
           onRename={handleRenameSelected}
-          onDelete={() => void handleDeleteSelected()}
+          onDelete={handleDeleteSelected}
           onCopyLink={() => void handleCopySelectedLink()}
           onMoveTo={handleMoveToSelected}
           onCopyTo={handleCopyToSelected}
@@ -1615,209 +990,13 @@ function Main({
           copyLinkDisabled={selectedCount !== 1}
           onDownload={handleDownloadSelected}
           onRename={handleRenameSelected}
-          onDelete={() => void handleDeleteSelected()}
+          onDelete={handleDeleteSelected}
           onCopyLink={() => void handleCopySelectedLink()}
           onMoveTo={handleMoveToSelected}
           onCopyTo={handleCopyToSelected}
         />
       )}
     </>
-  );
-}
-
-/**
- * Renders either a flat file view or Windows-style grouped sections
- */
-function FileBrowserContent({
-  groups,
-  viewMode,
-  groupBy,
-  onFileClick,
-  onFileContextMenu,
-  onFileDragEnd,
-  onFileDragLeave,
-  onFileDragOver,
-  onFileDragStart,
-  onFileDrop,
-  onSelectionCheckboxClick,
-  multiSelected,
-  showSelectionCheckbox,
-  emptyMessage,
-  bottomPadding,
-  draggableFiles,
-  dragOverDirectoryKey,
-}: {
-  groups: FileGroup[];
-  viewMode: ViewMode;
-  groupBy: GroupBy;
-  onFileClick: (file: FileItem, event: React.MouseEvent) => void;
-  onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
-  onFileDragEnd: () => void;
-  onFileDragLeave: (
-    file: FileItem,
-    event: React.DragEvent<HTMLElement>
-  ) => void;
-  onFileDragOver: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
-  onFileDragStart: (
-    file: FileItem,
-    event: React.DragEvent<HTMLElement>
-  ) => void;
-  onFileDrop: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
-  onSelectionCheckboxClick: (file: FileItem) => void;
-  multiSelected: string[] | null;
-  showSelectionCheckbox: boolean;
-  emptyMessage: React.ReactNode;
-  bottomPadding: React.CSSProperties["paddingBottom"];
-  draggableFiles: boolean;
-  dragOverDirectoryKey: string | null;
-}) {
-  const fileCount = groups.reduce(
-    (total, group) => total + group.files.length,
-    0
-  );
-  if (!fileCount) return emptyMessage;
-
-  if (groupBy === GroupBy.None) {
-    return (
-      <FileView
-        files={groups[0].files}
-        viewMode={viewMode}
-        onFileClick={onFileClick}
-        onFileContextMenu={onFileContextMenu}
-        onFileDragEnd={onFileDragEnd}
-        onFileDragLeave={onFileDragLeave}
-        onFileDragOver={onFileDragOver}
-        onFileDragStart={onFileDragStart}
-        onFileDrop={onFileDrop}
-        onSelectionCheckboxClick={onSelectionCheckboxClick}
-        multiSelected={multiSelected}
-        showSelectionCheckbox={showSelectionCheckbox}
-        showDetailsHeader
-        bottomPadding={bottomPadding}
-        draggableFiles={draggableFiles}
-        dragOverDirectoryKey={dragOverDirectoryKey}
-      />
-    );
-  }
-
-  return (
-    <Box sx={{ paddingBottom: bottomPadding }}>
-      {viewMode === ViewMode.Details && (
-        <FileDetailsHeader showSelectionCheckbox={showSelectionCheckbox} />
-      )}
-      {groups.map((group) => (
-        <FileGroupSection
-          key={group.id}
-          label={group.label}
-          count={group.files.length}>
-          <FileView
-            files={group.files}
-            viewMode={viewMode}
-            onFileClick={onFileClick}
-            onFileContextMenu={onFileContextMenu}
-            onFileDragEnd={onFileDragEnd}
-            onFileDragLeave={onFileDragLeave}
-            onFileDragOver={onFileDragOver}
-            onFileDragStart={onFileDragStart}
-            onFileDrop={onFileDrop}
-            onSelectionCheckboxClick={onSelectionCheckboxClick}
-            multiSelected={multiSelected}
-            showSelectionCheckbox={showSelectionCheckbox}
-            showDetailsHeader={false}
-            bottomPadding={0}
-            draggableFiles={draggableFiles}
-            dragOverDirectoryKey={dragOverDirectoryKey}
-          />
-        </FileGroupSection>
-      ))}
-    </Box>
-  );
-}
-
-/**
- * Renders grouped or ungrouped files with the selected browser view
- */
-function FileView({
-  files,
-  viewMode,
-  onFileClick,
-  onFileContextMenu,
-  onFileDragEnd,
-  onFileDragLeave,
-  onFileDragOver,
-  onFileDragStart,
-  onFileDrop,
-  onSelectionCheckboxClick,
-  multiSelected,
-  showSelectionCheckbox,
-  showDetailsHeader,
-  bottomPadding,
-  draggableFiles,
-  dragOverDirectoryKey,
-}: {
-  files: FileItem[];
-  viewMode: ViewMode;
-  onFileClick: (file: FileItem, event: React.MouseEvent) => void;
-  onFileContextMenu: (file: FileItem, event: React.MouseEvent) => void;
-  onFileDragEnd: () => void;
-  onFileDragLeave: (
-    file: FileItem,
-    event: React.DragEvent<HTMLElement>
-  ) => void;
-  onFileDragOver: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
-  onFileDragStart: (
-    file: FileItem,
-    event: React.DragEvent<HTMLElement>
-  ) => void;
-  onFileDrop: (file: FileItem, event: React.DragEvent<HTMLElement>) => void;
-  onSelectionCheckboxClick: (file: FileItem) => void;
-  multiSelected: string[] | null;
-  showSelectionCheckbox: boolean;
-  showDetailsHeader: boolean;
-  bottomPadding: React.CSSProperties["paddingBottom"];
-  draggableFiles: boolean;
-  dragOverDirectoryKey: string | null;
-}) {
-  if (viewMode === ViewMode.Details) {
-    return (
-      <Box sx={{ paddingBottom: bottomPadding }}>
-        <FileDetailsView
-          files={files}
-          multiSelected={multiSelected}
-          showSelectionCheckbox={showSelectionCheckbox}
-          onFileClick={onFileClick}
-          onFileContextMenu={onFileContextMenu}
-          onFileDragEnd={onFileDragEnd}
-          onFileDragLeave={onFileDragLeave}
-          onFileDragOver={onFileDragOver}
-          onFileDragStart={onFileDragStart}
-          onFileDrop={onFileDrop}
-          onSelectionCheckboxClick={onSelectionCheckboxClick}
-          showHeader={showDetailsHeader}
-          draggableFiles={draggableFiles}
-          dragOverDirectoryKey={dragOverDirectoryKey}
-        />
-      </Box>
-    );
-  }
-
-  return (
-    <FileGrid
-      files={files}
-      multiSelected={multiSelected}
-      showSelectionCheckbox={showSelectionCheckbox}
-      onFileClick={onFileClick}
-      onFileContextMenu={onFileContextMenu}
-      onFileDragEnd={onFileDragEnd}
-      onFileDragLeave={onFileDragLeave}
-      onFileDragOver={onFileDragOver}
-      onFileDragStart={onFileDragStart}
-      onFileDrop={onFileDrop}
-      onSelectionCheckboxClick={onSelectionCheckboxClick}
-      bottomPadding={bottomPadding}
-      draggableFiles={draggableFiles}
-      dragOverDirectoryKey={dragOverDirectoryKey}
-    />
   );
 }
 

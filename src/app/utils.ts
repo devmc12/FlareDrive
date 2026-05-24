@@ -19,14 +19,24 @@ import {
   SortField,
   TINY_FILE_SIZE_LIMIT,
   TYPE_GROUP_DEFINITIONS,
+  WEBDAV_ENDPOINT,
 } from "./constants";
-import type { FileGroup, FileItem, GroupDefinition } from "./type";
+import type {
+  FileGroup,
+  FileItem,
+  GroupDefinition,
+  PasteOperation,
+  PasteOperationItem,
+} from "./type";
 
 /**
  * Date: 2024-07-12
  * Time: 16:55
  * Desc: Provides shared frontend file metadata and display helpers
  */
+
+// Custom drag payload used to distinguish browser uploads from file moves
+export const INTERNAL_FILE_DRAG_TYPE = "application/x-flaredrive-file-keys";
 
 /**
  * Formats a byte count for compact file list display
@@ -60,6 +70,31 @@ export function extractFilename(key: string) {
  */
 export function encodeKey(key: string) {
   return key.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
+ * Builds the absolute browser-accessible WebDAV URL for a file key
+ * @param key File or folder key relative to the WebDAV endpoint
+ * @returns Absolute WebDAV URL
+ */
+export function getAbsoluteWebDavUrl(key: string) {
+  return new URL(
+    `${WEBDAV_ENDPOINT}${encodeKey(key)}`,
+    window.location.href
+  ).toString();
+}
+
+/**
+ * Starts a browser download for one regular file
+ * @param key File key relative to the WebDAV endpoint
+ */
+export function downloadFileKey(key: string) {
+  const anchor = document.createElement("a");
+  anchor.href = getAbsoluteWebDavUrl(key);
+  anchor.download = extractFilename(key);
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
 }
 
 /**
@@ -110,6 +145,121 @@ export function decodeDirectoryHash(hash: string) {
  */
 export function isDirectory(file: FileItem) {
   return file.httpMetadata?.contentType === DIRECTORY_CONTENT_TYPE;
+}
+
+/**
+ * Normalizes an object key for same-path comparisons
+ * @param key WebDAV object key
+ * @returns Object key without leading or trailing slashes
+ */
+export function normalizeObjectKey(key: string) {
+  return key.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+/**
+ * Normalizes a directory key for child target construction
+ * @param key Directory key or root
+ * @returns Directory key with a trailing slash when non-root
+ */
+export function normalizeTargetDirectoryKey(key: string) {
+  const normalizedKey = normalizeObjectKey(key);
+  return normalizedKey ? `${normalizedKey}/` : "";
+}
+
+/**
+ * Builds the target object key for a paste-like operation
+ * @param targetDirectoryKey Destination directory key
+ * @param sourceKey Source object key
+ * @returns Destination object key using the source basename
+ */
+export function buildOperationTargetKey(
+  targetDirectoryKey: string,
+  sourceKey: string
+) {
+  return `${normalizeTargetDirectoryKey(targetDirectoryKey)}${extractFilename(
+    sourceKey
+  )}`;
+}
+
+/**
+ * Checks whether the target would place an item onto itself or inside itself
+ * @param item Source operation item
+ * @param targetDirectoryKey Destination directory key
+ * @param targetKey Final destination object key
+ * @returns Whether the transfer target is invalid
+ */
+export function isInvalidOperationTarget(
+  item: PasteOperationItem,
+  targetDirectoryKey: string,
+  targetKey: string
+) {
+  const sourceKey = normalizeObjectKey(item.key);
+  const normalizedTargetKey = normalizeObjectKey(targetKey);
+  if (sourceKey === normalizedTargetKey) return true;
+  if (!item.isDirectory) return false;
+
+  const sourcePrefix = `${sourceKey}/`;
+  const targetDirectory = normalizeTargetDirectoryKey(targetDirectoryKey);
+  return (
+    targetDirectory === sourcePrefix || targetDirectory.startsWith(sourcePrefix)
+  );
+}
+
+/**
+ * Formats the operation title shown in paste mode
+ * @param operation Active copy or move operation
+ * @returns Human-readable operation summary
+ */
+export function formatPasteOperationTitle(operation: PasteOperation) {
+  const verb = operation.type === "move" ? "Move" : "Copy";
+  const count = operation.items.length;
+  return `${verb} ${count} ${count === 1 ? "item" : "items"}`;
+}
+
+/**
+ * Parses the internal file drag payload if it belongs to this app
+ * @param dataTransfer Browser drag data
+ * @returns Dragged operation items
+ */
+export function parseDraggedOperationItems(dataTransfer: DataTransfer) {
+  if (!dataTransfer.types.includes(INTERNAL_FILE_DRAG_TYPE)) return [];
+
+  try {
+    const payload = JSON.parse(
+      dataTransfer.getData(INTERNAL_FILE_DRAG_TYPE)
+    ) as PasteOperationItem[];
+    return payload.filter(
+      (item) =>
+        item &&
+        typeof item.key === "string" &&
+        typeof item.isDirectory === "boolean"
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Preserves selection order while appending unique keys
+ * @param baseKeys Existing selected keys
+ * @param addedKeys New keys to merge into the selection
+ * @returns Merged selection keys
+ */
+export function mergeSelectedKeys(baseKeys: string[], addedKeys: string[]) {
+  return Array.from(new Set([...baseKeys, ...addedKeys]));
+}
+
+/**
+ * Checks whether a keyboard shortcut started inside editable UI
+ * @param target Keyboard event target
+ * @returns Whether text editing should keep the shortcut
+ */
+export function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+
+  return Boolean(
+    target.closest("input,textarea,select,[contenteditable='true']")
+  );
 }
 
 /**
