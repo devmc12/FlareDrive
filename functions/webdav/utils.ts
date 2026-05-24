@@ -209,6 +209,25 @@ function parseAccessTokens(value?: string): WebDavAccessToken[] {
   });
 }
 
+let cachedAccessTokensRaw: string | undefined;
+let cachedAccessTokens: WebDavAccessToken[] | null = null;
+
+/**
+ * Returns parsed access tokens while reusing the last environment value
+ * @param value Raw WEBDAV_ACCESS_TOKENS JSON string
+ * @returns Cached or freshly parsed token definitions
+ */
+function getAccessTokens(value?: string): WebDavAccessToken[] {
+  if (value === cachedAccessTokensRaw && cachedAccessTokens) {
+    return cachedAccessTokens;
+  }
+
+  const tokens = parseAccessTokens(value);
+  cachedAccessTokensRaw = value;
+  cachedAccessTokens = tokens;
+  return tokens;
+}
+
 /**
  * Extracts a WebDAV destination key from COPY and MOVE requests
  * @param request Incoming WebDAV COPY or MOVE request
@@ -306,7 +325,7 @@ export async function authorizeWebDavRequest({
 
   let tokens: WebDavAccessToken[];
   try {
-    tokens = parseAccessTokens(env.WEBDAV_ACCESS_TOKENS);
+    tokens = getAccessTokens(env.WEBDAV_ACCESS_TOKENS);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid token";
     return { ok: false, response: forbidden(message) };
@@ -364,13 +383,15 @@ export async function* listAll(
   let cursor: string | undefined = undefined;
 
   for (;;) {
-    const r2Objects = await bucket.list({
-      prefix: prefix,
+    const listOptions = {
+      prefix,
       delimiter: isRecursive ? undefined : "/",
-      cursor: cursor,
-      // @ts-ignore
+      cursor,
       include: ["httpMetadata", "customMetadata"],
-    });
+    } as R2ListOptions & {
+      include: Array<"httpMetadata" | "customMetadata">;
+    };
+    const r2Objects = await bucket.list(listOptions);
 
     for await (const obj of r2Objects.objects)
       if (!obj.key.startsWith("_$flaredrive$/")) yield obj;

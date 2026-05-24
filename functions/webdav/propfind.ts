@@ -2,33 +2,113 @@ import { ROOT_OBJECT, WEBDAV_ENDPOINT } from "./constants";
 import { type RequestHandlerParams } from "./types";
 import { isPathAllowedByAuthContext, listAll } from "./utils";
 
+/**
+ * Date: 2024-07-08
+ * Time: 11:29
+ * Desc: Builds WebDAV PROPFIND XML responses from R2 object metadata
+ */
+
+type DavPropertyValue =
+  | {
+      value: string;
+      escaped: boolean;
+    }
+  | undefined;
+
 type DavProperties = {
-  creationdate: string | undefined;
-  displayname: string | undefined;
-  getcontentlanguage: string | undefined;
-  getcontentlength: string | undefined;
-  getcontenttype: string | undefined;
-  getetag: string | undefined;
-  getlastmodified: string | undefined;
-  resourcetype: string;
-  "fd:thumbnail": string | undefined;
+  creationdate: DavPropertyValue;
+  displayname: DavPropertyValue;
+  getcontentlanguage: DavPropertyValue;
+  getcontentlength: DavPropertyValue;
+  getcontenttype: DavPropertyValue;
+  getetag: DavPropertyValue;
+  getlastmodified: DavPropertyValue;
+  resourcetype: DavPropertyValue;
+  "fd:thumbnail": DavPropertyValue;
 };
+
+/**
+ * Wraps a plain text DAV property so it will be XML-escaped when rendered
+ * @param value Raw property value
+ * @returns Renderable text property
+ */
+function textProperty(value: string | undefined): DavPropertyValue {
+  return value === undefined ? undefined : { value, escaped: true };
+}
+
+/**
+ * Wraps a trusted DAV XML fragment for properties that contain child elements
+ * @param value Raw DAV XML fragment
+ * @returns Renderable raw XML property
+ */
+function rawXmlProperty(value: string): DavPropertyValue {
+  return { value, escaped: false };
+}
 
 function fromR2Object(object: R2Object | typeof ROOT_OBJECT): DavProperties {
   return {
-    creationdate: object.uploaded.toUTCString(),
-    displayname: object.httpMetadata?.contentDisposition,
-    getcontentlanguage: object.httpMetadata?.contentLanguage,
-    getcontentlength: object.size.toString(),
-    getcontenttype: object.httpMetadata?.contentType,
-    getetag: object.etag,
-    getlastmodified: object.uploaded.toUTCString(),
-    resourcetype:
+    creationdate: textProperty(object.uploaded.toISOString()),
+    displayname: textProperty(object.httpMetadata?.contentDisposition),
+    getcontentlanguage: textProperty(object.httpMetadata?.contentLanguage),
+    getcontentlength: textProperty(object.size.toString()),
+    getcontenttype: textProperty(object.httpMetadata?.contentType),
+    getetag: textProperty(object.etag),
+    getlastmodified: textProperty(object.uploaded.toUTCString()),
+    resourcetype: rawXmlProperty(
       object.httpMetadata?.contentType === "application/x-directory"
         ? "<collection />"
-        : "",
-    "fd:thumbnail": object.customMetadata?.thumbnail,
+        : ""
+    ),
+    "fd:thumbnail": textProperty(object.customMetadata?.thumbnail),
   };
+}
+
+/**
+ * Escapes text for XML element content
+ * @param value Raw text value
+ * @returns XML-safe text
+ */
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Encodes a WebDAV href path while preserving directory separators
+ * @param key R2 object key
+ * @returns XML-safe encoded WebDAV href
+ */
+function encodeDavHref(key: string) {
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return escapeXml(`${WEBDAV_ENDPOINT}${encodedKey}`);
+}
+
+/**
+ * Renders one DAV property element
+ * @param key XML property tag name
+ * @param property Renderable property value
+ * @returns XML property element
+ */
+function renderProperty(
+  key: string,
+  property: Exclude<DavPropertyValue, undefined>
+) {
+  const value = property.escaped ? escapeXml(property.value) : property.value;
+  return `<${key}>${value}</${key}>`;
+}
+
+/**
+ * Narrows DAV property entries to values that should be rendered
+ * @param entry Property key and optional value
+ * @returns Whether the property has a renderable value
+ */
+function hasPropertyValue(
+  entry: [string, DavPropertyValue]
+): entry is [string, Exclude<DavPropertyValue, undefined>] {
+  return entry[1] !== undefined;
 }
 
 async function findChildren({
@@ -85,12 +165,12 @@ export async function handleRequestPropfind({
     const properties = fromR2Object(child);
     return `
   <response>
-    <href>${encodeURI(`${WEBDAV_ENDPOINT}${child.key}`)}</href>
+    <href>${encodeDavHref(child.key)}</href>
     <propstat>
       <prop>
         ${Object.entries(properties)
-          .filter(([, value]) => value !== undefined)
-          .map(([key, value]) => `<${key}>${value}</${key}>`)
+          .filter(hasPropertyValue)
+          .map(([key, value]) => renderProperty(key, value))
           .join("\n")}
       </prop>
       <status>HTTP/1.1 200 OK</status>
