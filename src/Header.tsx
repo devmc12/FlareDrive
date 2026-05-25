@@ -1,5 +1,5 @@
 import { MoreHoriz as MoreHorizIcon } from "@mui/icons-material";
-import { IconButton, InputBase, Toolbar } from "@mui/material";
+import { Box, IconButton, InputBase, Toolbar } from "@mui/material";
 import { useState } from "react";
 
 import type {
@@ -8,6 +8,7 @@ import type {
   SortField,
   ViewMode,
 } from "./app/constants";
+import type { FileCounts } from "./app/type";
 import FileBrowserMenu from "./components/FileBrowserMenu";
 
 /**
@@ -21,6 +22,7 @@ import FileBrowserMenu from "./components/FileBrowserMenu";
  */
 function Header({
   search,
+  fileCounts,
   onSearchChange,
   setShowProgressDialog,
   viewMode,
@@ -34,6 +36,7 @@ function Header({
   onOpenSettings,
 }: {
   search: string;
+  fileCounts: FileCounts;
   onSearchChange: (newSearch: string) => void;
   setShowProgressDialog: (show: boolean) => void;
   viewMode: ViewMode;
@@ -47,9 +50,39 @@ function Header({
   onOpenSettings: () => void;
 }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const folderLabel = `${fileCounts.folders} folder${
+    fileCounts.folders === 1 ? "" : "s"
+  }`;
+  const fileLabel = `${fileCounts.files} file${
+    fileCounts.files === 1 ? "" : "s"
+  }`;
+  const countLabel = `${folderLabel} / ${fileLabel}`;
 
   return (
     <Toolbar disableGutters sx={{ padding: 1 }}>
+      <Box
+        component="span"
+        aria-label={countLabel}
+        title={countLabel}
+        sx={{
+          alignItems: "center",
+          backgroundColor: "rgba(243, 128, 32, 0.12)",
+          border: "1px solid",
+          borderColor: "rgba(243, 128, 32, 0.3)",
+          borderRadius: "999px",
+          color: "primary.main",
+          display: "inline-flex",
+          flexShrink: 0,
+          fontSize: 13,
+          fontWeight: 700,
+          height: 36,
+          justifyContent: "center",
+          marginRight: 1,
+          minWidth: 72,
+          paddingX: 1.25,
+        }}>
+        {fileCounts.folders}F/{fileCounts.files}D
+      </Box>
       <InputBase
         size="small"
         fullWidth

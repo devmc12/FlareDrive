@@ -33,33 +33,47 @@ export async function fetchPath(path: string) {
   const parser = new DOMParser();
   const text = await res.text();
   const document = parser.parseFromString(text, "application/xml");
-  const items: FileItem[] = Array.from(document.querySelectorAll("response"))
-    .filter(
-      (response) =>
-        decodeURIComponent(
-          response.querySelector("href")?.textContent ?? ""
-        ).slice(WEBDAV_ENDPOINT.length) !== path.replace(/\/$/, "")
-    )
-    .map((response) => {
-      const href = response.querySelector("href")?.textContent;
-      if (!href) throw new Error("Invalid response");
-      const contentType = response.querySelector("getcontenttype")?.textContent;
-      const size = response.querySelector("getcontentlength")?.textContent;
-      const lastModified =
-        response.querySelector("getlastmodified")?.textContent;
-      const thumbnail = response.getElementsByTagNameNS(
-        "flaredrive",
-        "thumbnail"
-      )[0]?.textContent;
-      return {
-        key: stripWebdavEndpoint(decodeURI(href)),
+  const currentPath = path.replace(/\/$/, "");
+  const items: FileItem[] = Array.from(
+    document.querySelectorAll("response")
+  ).flatMap((response) => {
+    const href = response.querySelector("href")?.textContent;
+    if (!href) throw new Error("Invalid response");
+    const key = decodeDavHref(href);
+    if (key === currentPath) return [];
+
+    const contentType = response.querySelector("getcontenttype")?.textContent;
+    const size = response.querySelector("getcontentlength")?.textContent;
+    const lastModified = response.querySelector("getlastmodified")?.textContent;
+    const thumbnail = response.getElementsByTagNameNS(
+      "flaredrive",
+      "thumbnail"
+    )[0]?.textContent;
+    return [
+      {
+        key,
         size: size ? Number(size) : 0,
         uploaded: lastModified!,
         httpMetadata: { contentType: contentType! },
         customMetadata: { thumbnail },
-      } as FileItem;
-    });
+      } as FileItem,
+    ];
+  });
   return items;
+}
+
+/**
+ * Decodes an encoded DAV href without treating reserved path characters as raw URL syntax
+ * @param href Encoded href from a WebDAV response
+ * @returns Object key relative to the WebDAV endpoint
+ */
+function decodeDavHref(href: string) {
+  const decodedHref = href
+    .split("/")
+    .map((segment) => decodeURIComponent(segment))
+    .join("/");
+
+  return stripWebdavEndpoint(decodedHref);
 }
 
 /**

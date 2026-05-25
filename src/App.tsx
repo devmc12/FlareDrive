@@ -17,6 +17,7 @@ import {
   type AppSettings,
 } from "./app/preview";
 import { TransferQueueProvider } from "./app/transferQueue";
+import type { FileCounts } from "./app/type";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsDialog from "./components/SettingsDialog";
 import UploadProgressBar from "./components/UploadProgressBar";
@@ -40,6 +41,10 @@ const theme = createTheme({
  */
 function App() {
   const [search, setSearch] = useState("");
+  const [fileCounts, setFileCounts] = useState<FileCounts>({
+    folders: 0,
+    files: 0,
+  });
   const [settings, setSettings] = useState<AppSettings>(() =>
     loadAppSettings()
   );
@@ -90,6 +95,7 @@ function App() {
             {!operationModeOpen && (
               <Header
                 search={search}
+                fileCounts={fileCounts}
                 onSearchChange={(newSearch: string) => setSearch(newSearch)}
                 setShowProgressDialog={setShowProgressDialog}
                 viewMode={settings.viewMode}
@@ -109,6 +115,7 @@ function App() {
               search={search}
               onError={setError}
               onStatusMessage={setStatusMessage}
+              onFileCountsChange={setFileCounts}
               settings={settings}
               viewMode={settings.viewMode}
               sortField={settings.sortField}

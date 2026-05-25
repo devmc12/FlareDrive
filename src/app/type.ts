@@ -16,6 +16,14 @@ export interface FileItem {
 }
 
 /**
+ * Current directory folder and file totals shown in the browser header
+ */
+export type FileCounts = {
+  folders: number;
+  files: number;
+};
+
+/**
  * File group shape rendered by grouped browser views
  */
 export type FileGroup = {

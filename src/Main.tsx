@@ -28,6 +28,7 @@ import { copyPaste, createRemoteFolder, fetchPath } from "./app/transfer";
 import { useTransferQueue, useUploadEnqueue } from "./app/transferQueue";
 import type {
   FileContextMenuState,
+  FileCounts,
   FileItem,
   PasteOperation,
   PasteOperationItem,
@@ -89,6 +90,7 @@ function Main({
   search,
   onError,
   onStatusMessage,
+  onFileCountsChange,
   settings,
   viewMode,
   sortField,
@@ -100,6 +102,7 @@ function Main({
   search: string;
   onError: (error: Error) => void;
   onStatusMessage: (message: string) => void;
+  onFileCountsChange: (fileCounts: FileCounts) => void;
   settings: AppSettings;
   viewMode: ViewMode;
   sortField: SortField;
@@ -137,6 +140,13 @@ function Main({
 
   const transferQueue = useTransferQueue();
   const uploadEnqueue = useUploadEnqueue();
+
+  const fileCounts = useMemo(() => {
+    const folders = files.filter(isDirectory).length;
+    const regularFiles = files.length - folders;
+
+    return { folders, files: regularFiles };
+  }, [files]);
 
   const displayGroups = useMemo(() => {
     const filteredFiles = search
@@ -259,6 +269,10 @@ function Main({
     if (!isDesktopPointer) setContextMenu(null);
   }, [isDesktopPointer]);
 
+  useEffect(() => {
+    onFileCountsChange(fileCounts);
+  }, [fileCounts, onFileCountsChange]);
+
   const navigateToCwd = useCallback((newCwd: string) => {
     const nextHash = encodeDirectoryHash(newCwd);
     if (window.location.hash === nextHash) {
@@ -295,7 +309,10 @@ function Main({
       .finally(() => setLoading(false));
   }, [closeActiveSelection, cwd, onError]);
 
-  useEffect(() => setLoading(true), [cwd]);
+  useEffect(() => {
+    setLoading(true);
+    onFileCountsChange({ folders: 0, files: 0 });
+  }, [cwd, onFileCountsChange]);
 
   useEffect(() => {
     fetchFiles();
