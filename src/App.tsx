@@ -1,16 +1,24 @@
 import { ThemeProvider } from "@emotion/react";
 import {
+  CircularProgress,
   createTheme,
   CssBaseline,
   GlobalStyles,
   Snackbar,
   Stack,
 } from "@mui/material";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import Header from "./Header";
 import Main from "./Main";
 import ProgressDialog, { ProgressDialogTab } from "./ProgressDialog";
+import {
+  addAuthExpiredListener,
+  fetchAuthStatus,
+  logoutAllSessions,
+  logoutCurrentSession,
+  type AuthStatus,
+} from "./app/auth";
 import {
   loadAppSettings,
   saveAppSettings,
@@ -18,7 +26,9 @@ import {
 } from "./app/preview";
 import { TransferQueueProvider } from "./app/transferQueue";
 import type { FileCounts } from "./app/type";
+import Centered from "./components/Centered";
 import ErrorBoundary from "./components/ErrorBoundary";
+import LoginDialog from "./components/LoginDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import UploadProgressBar from "./components/UploadProgressBar";
 
@@ -40,6 +50,8 @@ const theme = createTheme({
  * Provides app shell state, theme, and top-level dialogs
  */
 function App() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [fileCounts, setFileCounts] = useState<FileCounts>({
     folders: 0,
@@ -57,6 +69,39 @@ function App() {
   const [operationModeOpen, setOperationModeOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const appAuthenticated =
+    authStatus?.mode === "basic" || authStatus?.authenticated === true;
+
+  const loadAuthenticationStatus = useCallback(async () => {
+    setAuthLoading(true);
+    try {
+      setAuthStatus(await fetchAuthStatus());
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error
+          : new Error("Authentication check failed")
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAuthenticationStatus();
+  }, [loadAuthenticationStatus]);
+
+  useEffect(
+    () =>
+      addAuthExpiredListener(() => {
+        setAuthStatus((currentStatus) =>
+          currentStatus?.mode === "password"
+            ? { ...currentStatus, authenticated: false }
+            : currentStatus
+        );
+      }),
+    []
+  );
 
   /**
    * Opens the progress dialog directly to the upload task list
@@ -85,46 +130,97 @@ function App() {
     });
   }
 
+  /**
+   * Stores a successful password-auth status after login
+   */
+  function handleAuthenticated(nextAuthStatus: AuthStatus) {
+    setAuthStatus(nextAuthStatus);
+    setStatusMessage("Signed in");
+  }
+
+  /**
+   * Logs out only the current browser session
+   */
+  async function handleLogout() {
+    try {
+      setAuthStatus(await logoutCurrentSession());
+      setStatusMessage("Logged out");
+    } catch (error) {
+      setError(error instanceof Error ? error : new Error("Logout failed"));
+    }
+  }
+
+  /**
+   * Logs out every password-auth session for the current user
+   */
+  async function handleLogoutAll() {
+    try {
+      setAuthStatus(await logoutAllSessions());
+      setStatusMessage("Logged out all devices");
+    } catch (error) {
+      setError(error instanceof Error ? error : new Error("Logout failed"));
+    }
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       {globalStyles}
       <TransferQueueProvider>
         <ErrorBoundary>
-          <Stack sx={{ height: "100%" }}>
-            {!operationModeOpen && (
-              <Header
-                search={search}
-                fileCounts={fileCounts}
-                onSearchChange={(newSearch: string) => setSearch(newSearch)}
-                setShowProgressDialog={setShowProgressDialog}
-                viewMode={settings.viewMode}
-                sortField={settings.sortField}
-                sortDirection={settings.sortDirection}
-                groupBy={settings.groupBy}
-                onViewModeChange={(viewMode) => updateSettings({ viewMode })}
-                onSortFieldChange={(sortField) => updateSettings({ sortField })}
-                onSortDirectionChange={(sortDirection) =>
-                  updateSettings({ sortDirection })
-                }
-                onGroupByChange={(groupBy) => updateSettings({ groupBy })}
-                onOpenSettings={() => setShowSettingsDialog(true)}
-              />
-            )}
-            <Main
-              search={search}
-              onError={setError}
-              onStatusMessage={setStatusMessage}
-              onFileCountsChange={setFileCounts}
-              settings={settings}
-              viewMode={settings.viewMode}
-              sortField={settings.sortField}
-              sortDirection={settings.sortDirection}
-              groupBy={settings.groupBy}
-              onBottomActionBarVisibilityChange={setBottomActionBarOpen}
-              onOperationModeVisibilityChange={setOperationModeOpen}
-            />
-          </Stack>
+          {authLoading ? (
+            <Centered>
+              <CircularProgress />
+            </Centered>
+          ) : (
+            appAuthenticated && (
+              <Stack sx={{ height: "100%" }}>
+                {!operationModeOpen && (
+                  <Header
+                    search={search}
+                    fileCounts={fileCounts}
+                    onSearchChange={(newSearch: string) => setSearch(newSearch)}
+                    setShowProgressDialog={setShowProgressDialog}
+                    showAuthActions={
+                      authStatus?.mode === "password" &&
+                      authStatus.authenticated &&
+                      !authStatus.publicRead
+                    }
+                    viewMode={settings.viewMode}
+                    sortField={settings.sortField}
+                    sortDirection={settings.sortDirection}
+                    groupBy={settings.groupBy}
+                    onViewModeChange={(viewMode) =>
+                      updateSettings({ viewMode })
+                    }
+                    onSortFieldChange={(sortField) =>
+                      updateSettings({ sortField })
+                    }
+                    onSortDirectionChange={(sortDirection) =>
+                      updateSettings({ sortDirection })
+                    }
+                    onGroupByChange={(groupBy) => updateSettings({ groupBy })}
+                    onOpenSettings={() => setShowSettingsDialog(true)}
+                    onLogout={() => void handleLogout()}
+                    onLogoutAll={() => void handleLogoutAll()}
+                  />
+                )}
+                <Main
+                  search={search}
+                  onError={setError}
+                  onStatusMessage={setStatusMessage}
+                  onFileCountsChange={setFileCounts}
+                  settings={settings}
+                  viewMode={settings.viewMode}
+                  sortField={settings.sortField}
+                  sortDirection={settings.sortDirection}
+                  groupBy={settings.groupBy}
+                  onBottomActionBarVisibilityChange={setBottomActionBarOpen}
+                  onOperationModeVisibilityChange={setOperationModeOpen}
+                />
+              </Stack>
+            )
+          )}
           <ProgressDialog
             open={showProgressDialog}
             onClose={() => setShowProgressDialog(false)}
@@ -140,6 +236,15 @@ function App() {
             settings={settings}
             onChange={handleSettingsChange}
             onClose={() => setShowSettingsDialog(false)}
+          />
+          <LoginDialog
+            open={
+              !authLoading &&
+              authStatus?.mode === "password" &&
+              !authStatus.authenticated
+            }
+            onAuthenticated={handleAuthenticated}
+            onError={setError}
           />
         </ErrorBoundary>
         <Snackbar

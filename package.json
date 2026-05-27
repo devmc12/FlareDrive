@@ -27,7 +27,7 @@
     "start": "npm run dev",
     "dev": "concurrently -k -n frontend,functions -c cyan,green \"npm:dev:frontend\" \"npm:dev:functions\"",
     "dev:frontend": "vite --host 127.0.0.1 --port 3601 --strictPort",
-    "dev:functions": "wrangler pages dev public --port 3602 --compatibility-date=2026-05-20 --env-file .dev.vars --r2=BUCKET",
+    "dev:functions": "wrangler pages dev public --port 3602 --compatibility-date=2026-05-20 --env-file .dev.vars --r2=BUCKET --d1=AUTH_DB",
     "build": "tsc --noEmit && vite build",
     "lint": "eslint src functions vite.config.ts eslint.config.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 3600"

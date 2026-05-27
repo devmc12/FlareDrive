@@ -25,6 +25,7 @@ function Header({
   fileCounts,
   onSearchChange,
   setShowProgressDialog,
+  showAuthActions,
   viewMode,
   sortField,
   sortDirection,
@@ -34,11 +35,14 @@ function Header({
   onSortDirectionChange,
   onGroupByChange,
   onOpenSettings,
+  onLogout,
+  onLogoutAll,
 }: {
   search: string;
   fileCounts: FileCounts;
   onSearchChange: (newSearch: string) => void;
   setShowProgressDialog: (show: boolean) => void;
+  showAuthActions: boolean;
   viewMode: ViewMode;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -48,6 +52,8 @@ function Header({
   onSortDirectionChange: (sortDirection: SortDirection) => void;
   onGroupByChange: (groupBy: GroupBy) => void;
   onOpenSettings: () => void;
+  onLogout: () => void;
+  onLogoutAll: () => void;
 }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const folderLabel = `${fileCounts.folders} folder${
@@ -108,6 +114,7 @@ function Header({
       <FileBrowserMenu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
+        showAuthActions={showAuthActions}
         onClose={() => setAnchorEl(null)}
         viewMode={viewMode}
         sortField={sortField}
@@ -119,6 +126,8 @@ function Header({
         onGroupByChange={onGroupByChange}
         onShowProgress={() => setShowProgressDialog(true)}
         onOpenSettings={onOpenSettings}
+        onLogout={onLogout}
+        onLogoutAll={onLogoutAll}
       />
     </Toolbar>
   );

@@ -8,4 +8,25 @@ WEBDAV_PASSWORD="admin"
 
 # Optional limited WebDAV credentials for clients you do not fully trust
 # Uncomment and replace each password with the SHA-256 of the raw token secret
-# WEBDAV_ACCESS_TOKENS='[{"username":"phone","password":"<sha256-hex>","access":"rw","includes":["photos/phone/"],"excludes":["photos/phone/private/"]},{"username":"reader","password":"<sha256-hex>","access":"ro","includes":["shared/"],"excludes":[]}]'
+# WEBDAV_ACCESS_TOKENS='[{"username":"phone","password":"<sha256-hex>","access":"rw","includes":["webdav/phone/"],"excludes":["webdav/phone/private/"]},{"username":"reader","password":"<sha256-hex>","access":"ro","includes":["webdav/"],"excludes":[]}]'
+
+# Optional public read access for WebDAV browsing
+# Set to 1 to allow GET, HEAD, and PROPFIND without Basic Auth or app login
+# WEBDAV_PUBLIC_READ="1"
+
+# Frontend auth mode.
+# Use "basic" to keep the original browser/WebDAV Basic Auth behavior.
+# Use "password" to enable the app login dialog backed by D1 sessions.
+FLAREDRIVE_AUTH_MODE="basic"
+
+# Single frontend login account used when FLAREDRIVE_AUTH_MODE="password".
+# The example password hash is SHA-256("admin").
+FLAREDRIVE_LOGIN_ACCOUNT='{"username":"admin","password":"8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"}'
+
+# ECDH P-256 private JWK used to decrypt password login payloads.
+# Generate your own key and keep it secret.
+FLAREDRIVE_LOGIN_PRIVATE_KEY='<private-jwk-json>'
+
+# Session lifetime in seconds for normal and keep-signed-in logins.
+FLAREDRIVE_SESSION_TTL_SECONDS="86400"
+FLAREDRIVE_REMEMBER_TTL_SECONDS="604800"

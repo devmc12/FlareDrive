@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import MultiSelectToolbar from "./MultiSelectToolbar";
 import UploadDrawer, { UploadFab } from "./UploadDrawer";
+import { throwIfAuthenticationRequired } from "./app/auth";
 import {
   GroupBy,
   ViewMode,
@@ -783,9 +784,11 @@ function Main({
     setDeleteBusy(true);
     try {
       for (const key of deleteTargetKeys) {
-        await fetch(`${WEBDAV_ENDPOINT}${encodeKey(key)}`, {
+        const response = await fetch(`${WEBDAV_ENDPOINT}${encodeKey(key)}`, {
           method: "DELETE",
         });
+        throwIfAuthenticationRequired(response);
+        if (!response.ok) throw new Error(await response.text());
       }
       setDeleteConfirmOpen(false);
       setDeleteTargetKeys([]);

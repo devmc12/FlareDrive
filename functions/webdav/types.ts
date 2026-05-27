@@ -1,3 +1,5 @@
+import type { FlareDriveAuthEnv } from "../auth";
+
 /**
  * Date: 2026-05-21
  * Time: 10:13
@@ -42,7 +44,7 @@ export type WebDavAccessToken = {
  * Successful authorization result used for future request policy decisions
  */
 export type WebDavAuthContext = {
-  kind: "admin" | "public" | "token";
+  kind: "admin" | "public" | "session" | "token";
   access: WebDavAccess;
   includes: string[];
   excludes: string[];
@@ -52,7 +54,7 @@ export type WebDavAuthContext = {
 /**
  * Cloudflare environment variables used by WebDAV authorization
  */
-export type WebDavAuthEnv = {
+export type WebDavAuthEnv = FlareDriveAuthEnv & {
   WEBDAV_USERNAME?: string;
   WEBDAV_PASSWORD?: string;
   WEBDAV_ACCESS_TOKENS?: string;

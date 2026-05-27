@@ -1,3 +1,9 @@
+import {
+  getAuthMode,
+  getSessionFromRequest,
+  sha256Hex,
+  timingSafeEqual,
+} from "../auth";
 import { READ_METHODS, SHA256_HEX_LENGTH, WEBDAV_ENDPOINT } from "./constants";
 import {
   type BasicCredentials,
@@ -128,39 +134,6 @@ function parseBasicCredentials(request: Request): BasicCredentials | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Compares two strings without short-circuiting on the first mismatch
- * @param a First string
- * @param b Second string
- * @returns True when both strings have identical content
- */
-function timingSafeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
-
-  let mismatch = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
-  }
-
-  return mismatch === 0;
-}
-
-/**
- * Calculates a SHA-256 digest for a raw token secret
- * @param value Raw token secret supplied by the client
- * @returns Lowercase hex encoded SHA-256 digest
- */
-async function sha256Hex(value: string) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(value)
-  );
-
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 /**
@@ -333,15 +306,36 @@ export async function authorizeWebDavRequest({
     env.WEBDAV_USERNAME && env.WEBDAV_PASSWORD
   );
   const hasAccessTokenConfig = Boolean(env.WEBDAV_ACCESS_TOKENS?.trim());
+  const authMode = getAuthMode(env);
 
-  if (!hasAdminCredentials && !hasAccessTokenConfig) {
+  const credentials = parseBasicCredentials(request);
+  if (!credentials && authMode === "password") {
+    const session = await getSessionFromRequest(env, request);
+    if (session) {
+      return {
+        ok: true,
+        context: {
+          kind: "session",
+          access: "rw",
+          includes: [""],
+          excludes: [],
+          username: session.username,
+        },
+      };
+    }
+  }
+
+  if (
+    !hasAdminCredentials &&
+    !hasAccessTokenConfig &&
+    authMode !== "password"
+  ) {
     return {
       ok: false,
       response: forbidden("WebDAV protocol is not enabled"),
     };
   }
 
-  const credentials = parseBasicCredentials(request);
   if (!credentials) {
     return { ok: false, response: unauthorized() };
   }

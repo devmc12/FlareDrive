@@ -1,6 +1,10 @@
 import pLimit from "p-limit";
 
 import {
+  isAuthenticationRequiredError,
+  throwIfAuthenticationRequired,
+} from "./auth";
+import {
   PDF_CONTENT_TYPE,
   THUMBNAIL_PATH_PREFIX,
   WEBDAV_ENDPOINT,
@@ -26,6 +30,7 @@ export async function fetchPath(path: string) {
     headers: { Depth: "1" },
   });
 
+  throwIfAuthenticationRequired(res);
   if (!res.ok) throw new Error("Failed to fetch");
   if (!res.headers.get("Content-Type")?.includes("application/xml"))
     throw new Error("Invalid response");
@@ -320,6 +325,8 @@ export async function multipartUpload(
         signal,
       }
     );
+    throwIfAuthenticationRequired(uploadResponse);
+    if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
     ({ uploadId } = await uploadResponse.json<{ uploadId: string }>());
     if (!uploadId) throw new Error("Missing multipart upload id");
     const activeUploadId = uploadId;
@@ -375,6 +382,8 @@ export async function multipartUpload(
               return uploadPart();
             });
         const response = await [1, 2].reduce(retryReducer, uploadPart());
+        throwIfAuthenticationRequired(response);
+        if (!response.ok) throw new Error(await response.text());
         return { partNumber: i, etag: response.headers.get("etag")! };
       })
     );
@@ -393,6 +402,7 @@ export async function multipartUpload(
           signal,
         }
       );
+      throwIfAuthenticationRequired(response);
       if (!response.ok) throw new Error(await response.text());
       return response;
     } finally {
@@ -422,6 +432,7 @@ export async function copyPaste(source: string, target: string, move = false) {
     method: move ? "MOVE" : "COPY",
     headers: { Depth: "infinity", Destination: destinationUrl.href },
   });
+  throwIfAuthenticationRequired(response);
   if (response.ok) return;
 
   const errorText = await response.text();
@@ -439,6 +450,7 @@ export async function createRemoteFolder(folderKey: string) {
 
   const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(normalizedFolderKey)}`;
   const response = await fetch(uploadUrl, { method: "MKCOL" });
+  throwIfAuthenticationRequired(response);
   if (response.status === 201 || response.status === 405 || response.ok) {
     return;
   }
@@ -480,18 +492,26 @@ export async function processTransferTask({
 
       const thumbnailUploadUrl = `${WEBDAV_ENDPOINT}${THUMBNAIL_PATH_PREFIX}${digestHex}.png`;
       try {
-        await fetch(thumbnailUploadUrl, {
+        const thumbnailResponse = await fetch(thumbnailUploadUrl, {
           method: "PUT",
           body: thumbnailBlob,
           signal,
         });
+        throwIfAuthenticationRequired(thumbnailResponse);
+        if (!thumbnailResponse.ok) {
+          throw new Error(await thumbnailResponse.text());
+        }
         thumbnailDigest = digestHex;
       } catch (error) {
-        if (isAbortError(error)) throw error;
+        if (isAbortError(error) || isAuthenticationRequiredError(error)) {
+          throw error;
+        }
         console.log(`Upload ${digestHex}.png failed`);
       }
     } catch (error) {
-      if (isAbortError(error)) throw error;
+      if (isAbortError(error) || isAuthenticationRequiredError(error)) {
+        throw error;
+      }
       console.log(`Generate thumbnail failed`);
     }
   }
@@ -507,12 +527,15 @@ export async function processTransferTask({
     });
   } else {
     const uploadUrl = `${WEBDAV_ENDPOINT}${encodeKey(remoteKey)}`;
-    return await xhrFetch(uploadUrl, {
+    const response = await xhrFetch(uploadUrl, {
       method: "PUT",
       headers,
       body: file,
       signal,
       onUploadProgress: onTaskProgress,
     });
+    throwIfAuthenticationRequired(response);
+    if (!response.ok) throw new Error(await response.text());
+    return response;
   }
 }

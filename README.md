@@ -24,21 +24,18 @@ Local development runs two separate local servers:
 - Frontend: Vite on `http://127.0.0.1:3601`
 - Backend: Cloudflare Pages Functions on `http://127.0.0.1:3602`
 
-Copy `.dev.vars.example` to `.dev.vars` for the local Wrangler Pages Functions
-backend:
+Copy `.dev.vars.example` to `.dev.vars` for the local Wrangler Pages Functions backend.
 
-```env
-# Copy this file to .dev.vars for the local Wrangler Pages Functions backend
+Password auth mode requires a D1 database binding named `AUTH_DB`. When running
+locally without a Wrangler configuration file, bind a temporary local D1
+database through `npm run dev:functions` and apply the schema in the local
+Wrangler D1 console or with a private local Wrangler config that is not committed.
 
-# WebDAV Basic Auth username checked by the backend
-WEBDAV_USERNAME="admin"
+For production, create a D1 database in the Cloudflare dashboard, bind it to the
+Pages project as `AUTH_DB`, and run this schema in the D1 dashboard SQL console:
 
-# WebDAV Basic Auth password checked by the backend
-WEBDAV_PASSWORD="admin"
-
-# Optional limited WebDAV credentials for clients you do not fully trust
-# Uncomment and replace each password with the SHA-256 of the raw token secret
-# WEBDAV_ACCESS_TOKENS='[{"username":"phone","password":"<sha256-hex>","access":"rw","includes":["photos/phone/"],"excludes":["photos/phone/private/"]},{"username":"reader","password":"<sha256-hex>","access":"ro","includes":["shared/"],"excludes":[]},{"username":"dropbox","password":"<sha256-hex>","access":"up","includes":["uploads/"],"excludes":[]}]'
+```sql
+`` npx wrangler d1 execute AUTH_DB --remote --file migrations/0001_auth_sessions.sql
 ```
 
 Start the local app:
@@ -69,6 +66,12 @@ Generate a token hash with Node.js:
 node -e "const crypto=require('crypto'); console.log(crypto.createHash('sha256').update(process.argv[1]).digest('hex'))" "raw-token-secret"
 ```
 
+Generate the private login encryption key with Node.js:
+
+```bash
+node -e "const { webcrypto } = require('crypto'); (async () => { const pair = await webcrypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']); console.log(JSON.stringify(await webcrypto.subtle.exportKey('jwk', pair.privateKey))); })()"
+```
+
 Access token fields:
 
 - `username`: the username entered in the WebDAV client
@@ -80,17 +83,32 @@ Access token fields:
 - `excludes`: an array of R2 key prefixes the client cannot access, even when
   they are inside `includes`
 
-Path scopes use prefix matching after trimming leading and trailing slashes.
-For example, `test/abc` allows `test/abc` and `test/abc/file.txt`, but not
-`test/abcd/file.txt`. Excludes take priority over includes. Directory listings
-and recursive operations filter excluded descendants, and the server rejects
-requests outside the allowed scopes, including `COPY` and `MOVE` destinations.
-Upload-only `up` tokens cannot read files, list directories, create folders,
-copy, move, or delete existing files. Parent directories must already exist
-unless the upload target is at the bucket root.
+Path scopes are R2 object key prefixes after the first `/webdav/` endpoint
+prefix is removed. Use prefix matching after trimming leading and trailing
+slashes. For example, `webdav/phone` allows `webdav/phone` and
+`webdav/phone/file.txt`, but not `webdav/phonebook/file.txt`. The first
+`/webdav` in the URL is the HTTP API route; the second `webdav` in
+`/webdav/webdav/phone/` is the default R2 folder name used by these examples.
+Excludes take priority over includes. Directory listings and recursive
+operations filter excluded descendants, and the server rejects requests outside
+the allowed scopes, including `COPY` and `MOVE` destinations. Upload-only `up`
+tokens cannot read files, list directories, create folders, copy, move, or
+delete existing files. Parent directories must already exist unless the upload
+target is at the bucket root.
 
 Clients using a limited token should connect directly to one of the included
-prefixes, such as `https://<your-domain.com>/webdav/photos/phone/`.
+prefixes, such as `https://<your-domain.com>/webdav/webdav/phone/`. The web app
+starts from `/webdav/`, so a scoped token that does not include the root scope
+cannot drive the full web app root.
+
+Basic Auth credentials are sent as Base64 in every authenticated WebDAV
+request. HTTPS protects the header from ordinary network observers, but a
+corporate TLS inspection proxy can see and decode it. When
+`FLAREDRIVE_AUTH_MODE="password"`, the web app encrypts the complete login
+payload with ECDH P-256 and AES-GCM before sending it, then uses an opaque
+`HttpOnly` session cookie after login. The raw session token is not stored in
+D1; only its SHA-256 hash is stored. WebDAV clients can still use Basic Auth and
+scoped access tokens under `/webdav`.
 
 For a production-like local run without Vite HMR, use:
 
@@ -113,6 +131,9 @@ Steps:
    - Set `WEBDAV_USERNAME` and `WEBDAV_PASSWORD`
    - (Optional) Set `WEBDAV_ACCESS_TOKENS` to issue limited client credentials
    - (Optional) Set `WEBDAV_PUBLIC_READ` to `1` to enable public read
+   - (Optional) Set `FLAREDRIVE_AUTH_MODE` to `password`, set
+     `FLAREDRIVE_LOGIN_ACCOUNT` and `FLAREDRIVE_LOGIN_PRIVATE_KEY`, then bind a
+     D1 database as `AUTH_DB`
 2. After initial deployment, bind your R2 bucket to `BUCKET` variable
 3. Retry deployment in `Deployments` page to apply the changes
 4. (Optional) Add a custom domain
@@ -131,7 +152,7 @@ that supports the WebDAV protocol to access your files.
 Fill the endpoint URL as `https://<your-domain.com>/webdav` and use the admin
 username and password you set. For a limited access token, fill the endpoint URL
 with an included prefix, such as
-`https://<your-domain.com>/webdav/photos/phone/`, then use the token username
+`https://<your-domain.com>/webdav/webdav/phone/`, then use the token username
 and raw token secret.
 
 However, the standard WebDAV protocol does not support large file (≥128MB) uploads due to the limitation of Cloudflare Workers.

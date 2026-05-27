@@ -37,6 +37,7 @@ import {
 type FileBrowserMenuProps = {
   anchorEl: HTMLElement | null;
   open: boolean;
+  showAuthActions: boolean;
   viewMode: ViewMode;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -48,6 +49,8 @@ type FileBrowserMenuProps = {
   onGroupByChange: (groupBy: GroupBy) => void;
   onShowProgress: () => void;
   onOpenSettings: () => void;
+  onLogout: () => void;
+  onLogoutAll: () => void;
 };
 
 /**
@@ -56,6 +59,7 @@ type FileBrowserMenuProps = {
 function FileBrowserMenu({
   anchorEl,
   open,
+  showAuthActions,
   viewMode,
   sortField,
   sortDirection,
@@ -67,6 +71,8 @@ function FileBrowserMenu({
   onGroupByChange,
   onShowProgress,
   onOpenSettings,
+  onLogout,
+  onLogoutAll,
 }: FileBrowserMenuProps) {
   const [submenu, setSubmenu] = useState<FileBrowserSubmenu | null>(null);
   const [submenuAnchorEl, setSubmenuAnchorEl] = useState<HTMLElement | null>(
@@ -127,6 +133,25 @@ function FileBrowserMenu({
           }}>
           Settings
         </MenuItem>
+        {showAuthActions && [
+          <Divider key="auth-divider" />,
+          <MenuItem
+            key="logout"
+            onClick={() => {
+              closeAll();
+              onLogout();
+            }}>
+            Logout
+          </MenuItem>,
+          <MenuItem
+            key="logout-all"
+            onClick={() => {
+              closeAll();
+              onLogoutAll();
+            }}>
+            Logout all devices
+          </MenuItem>,
+        ]}
       </Menu>
 
       <Popper

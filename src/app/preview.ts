@@ -1,3 +1,4 @@
+import { throwIfAuthenticationRequired } from "./auth";
 import {
   DEFAULT_GROUP_BY,
   DEFAULT_SORT_DIRECTION,
@@ -307,6 +308,7 @@ export function isWithinPreviewLimit(file: FileItem, kind: PreviewKind) {
  */
 export async function fetchWebDavBlob(key: string) {
   const response = await fetch(getWebDavFileUrl(key));
+  throwIfAuthenticationRequired(response);
   if (!response.ok) throw new Error(await getResponseError(response));
   return await response.blob();
 }
@@ -318,6 +320,7 @@ export async function fetchWebDavBlob(key: string) {
  */
 export async function fetchWebDavText(key: string) {
   const response = await fetch(getWebDavFileUrl(key));
+  throwIfAuthenticationRequired(response);
   if (!response.ok) throw new Error(await getResponseError(response));
   return await response.text();
 }
@@ -341,6 +344,7 @@ export async function putWebDavFile(
     headers,
     body,
   });
+  throwIfAuthenticationRequired(response);
   if (!response.ok) throw new Error(await getResponseError(response));
 }
 

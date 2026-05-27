@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/webdav", "/webdav/*"],
+  "include": ["/webdav", "/webdav/*", "/api/auth", "/api/auth/*"],
   "exclude": []
 }
