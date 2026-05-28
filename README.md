@@ -3,6 +3,8 @@
 基于 Cloudflare R2 的存储管理器，使用 Pages 和 Workers 构建。免费提供 10 GB 存储空间，免费无服务器后端每日调用上限为 100,000 次。
 [了解更多定价信息](https://developers.cloudflare.com/r2/platform/pricing/)
 
+中文 | [English](README.en.md)
+
 ## 功能
 
 - 上传大文件
@@ -15,10 +17,17 @@
 - Markdown 预览、编辑与保存回传
 - 文本文件在线编辑与保存回传
 - ZIP 压缩包解压预览，并支持下载单个文件
+- 支持多种视图模式、文件排序与分组
 - 文件移动与复制
 - 可选的账号密码登录（使用加密 Session Cookie）
 - 可选的 Cloudflare Turnstile 登录验证
 - 基于 Vite 的前端
+
+![Screenshots-01.png](documents/screenshots/Screenshots-01.png)
+
+![Screenshots-02.png](documents/screenshots/Screenshots-02.png)
+
+![Screenshots-03.png](documents/screenshots/Screenshots-03.png)
 
 ## 使用方式
 

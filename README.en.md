@@ -4,6 +4,8 @@ Cloudflare R2 storage manager with Pages and Workers. Free 10 GB storage.
 Free serverless backend with a limit of 100,000 invocation requests per day.
 [More about pricing](https://developers.cloudflare.com/r2/platform/pricing/)
 
+English | [中文](README.md)
+
 ## Features
 
 - Upload large files
@@ -16,10 +18,17 @@ Free serverless backend with a limit of 100,000 invocation requests per day.
 - Markdown preview, editing, and save-back support
 - Text file editing with save-back support
 - Extract and preview ZIP archives, with support for downloading individual files
+Multiple view modes with file sorting and grouping support
 - Move and copy files
 - Optional password login with encrypted session cookies
 - Optional Cloudflare Turnstile verification
 - Vite-powered frontend
+
+![Screenshots-01.png](documents/screenshots/Screenshots-01.png)
+
+![Screenshots-02.png](documents/screenshots/Screenshots-02.png)
+
+![Screenshots-03.png](documents/screenshots/Screenshots-03.png)
 
 ## Usage
 
