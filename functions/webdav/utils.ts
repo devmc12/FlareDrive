@@ -23,6 +23,22 @@ export function notFound() {
   return new Response("Not found", { status: 404 });
 }
 
+// Internal object namespace reserved for generated FlareDrive support files
+const INTERNAL_OBJECT_PREFIX = "_$flaredrive$/";
+
+// Internal thumbnail namespace read by the frontend file browser
+const INTERNAL_THUMBNAIL_PREFIX = `${INTERNAL_OBJECT_PREFIX}thumbnails/`;
+
+// Browser-executable document types that must not run on the app origin
+const ACTIVE_CONTENT_TYPES = new Set([
+  "application/xhtml+xml",
+  "image/svg+xml",
+  "text/html",
+]);
+
+// Browser-executable file extensions that may be sniffed without safe headers
+const ACTIVE_CONTENT_EXTENSIONS = new Set([".htm", ".html", ".svg", ".xhtml"]);
+
 /**
  * Extracts the R2 bucket binding and decoded object key from a Pages context
  * @param context Cloudflare Pages Function context
@@ -37,6 +53,75 @@ export function parseBucketPath(context: any): [R2Bucket, string] {
   const driveid = url.hostname.replace(/\..*/, "");
 
   return [env[driveid] || env["BUCKET"], path];
+}
+
+/**
+ * Checks whether a WebDAV key belongs to the internal FlareDrive namespace
+ * @param path Decoded WebDAV object key
+ * @returns Whether the path is reserved for internal support objects
+ */
+export function isInternalObjectPath(path: string) {
+  return path.startsWith(INTERNAL_OBJECT_PREFIX);
+}
+
+/**
+ * Checks whether a request may access the reserved internal object namespace
+ * @param path Decoded WebDAV object key
+ * @param request Incoming WebDAV request
+ * @returns Whether the internal request is allowed
+ */
+export function isAllowedInternalObjectRequest(path: string, request: Request) {
+  if (!isInternalObjectPath(path)) return true;
+  if (!isInternalThumbnailPath(path)) return false;
+
+  if (request.method === "GET" || request.method === "HEAD") return true;
+
+  return (
+    request.method === "PUT" &&
+    !new URL(request.url).search &&
+    !request.url.endsWith("/")
+  );
+}
+
+/**
+ * Builds safe HTTP metadata for R2 writes from user-controlled request headers
+ * @param request Incoming WebDAV upload request
+ * @param path Decoded WebDAV object key
+ * @returns Filtered metadata headers
+ */
+export function buildSafeHttpMetadata(request: Request, path: string) {
+  const headers = new Headers(request.headers);
+
+  if (isActiveContent(path, headers.get("Content-Type"))) {
+    headers.set("Content-Type", "application/octet-stream");
+    headers.set(
+      "Content-Disposition",
+      `attachment; filename="${getSafeAttachmentFilename(path)}"`
+    );
+  }
+
+  return headers;
+}
+
+/**
+ * Applies browser hardening headers before returning a WebDAV object
+ * @param headers Response headers populated from R2 metadata
+ * @param path Decoded WebDAV object key
+ */
+export function applyWebDavResponseSecurityHeaders(
+  headers: Headers,
+  path: string
+) {
+  headers.set("X-Content-Type-Options", "nosniff");
+
+  if (!isActiveContent(path, headers.get("Content-Type"))) return;
+
+  headers.set("Content-Type", "application/octet-stream");
+  headers.set(
+    "Content-Disposition",
+    `attachment; filename="${getSafeAttachmentFilename(path)}"`
+  );
+  headers.set("Content-Security-Policy", "sandbox");
 }
 
 /**
@@ -66,6 +151,54 @@ function forbidden(message = "Forbidden") {
  */
 function normalizeAuthPath(path: string) {
   return path.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+/**
+ * Checks whether a key points at an internal thumbnail object
+ * @param path Decoded WebDAV object key
+ * @returns Whether the key is a hash-named PNG thumbnail
+ */
+function isInternalThumbnailPath(path: string) {
+  const thumbnailName = path.slice(INTERNAL_THUMBNAIL_PREFIX.length);
+  return (
+    path.startsWith(INTERNAL_THUMBNAIL_PREFIX) &&
+    /^[a-f0-9]{40}\.png$/i.test(thumbnailName)
+  );
+}
+
+/**
+ * Checks whether a WebDAV object could execute active browser content
+ * @param path Decoded WebDAV object key
+ * @param contentType Stored or incoming content type
+ * @returns Whether the object should be served as a download
+ */
+function isActiveContent(path: string, contentType: string | null) {
+  const mediaType = contentType?.split(";")[0].trim().toLowerCase();
+  if (mediaType && ACTIVE_CONTENT_TYPES.has(mediaType)) return true;
+
+  const extension = path
+    .replace(/\/+$/, "")
+    .split("/")
+    .pop()
+    ?.toLowerCase()
+    .match(/\.[^.]+$/)?.[0];
+
+  return Boolean(extension && ACTIVE_CONTENT_EXTENSIONS.has(extension));
+}
+
+/**
+ * Builds a conservative attachment filename from an object key
+ * @param path Decoded WebDAV object key
+ * @returns Filename safe for a quoted Content-Disposition parameter
+ */
+function getSafeAttachmentFilename(path: string) {
+  return (
+    path
+      .replace(/\/+$/, "")
+      .split("/")
+      .pop()
+      ?.replace(/["\\\r\n]/g, "_") || "download"
+  );
 }
 
 /**

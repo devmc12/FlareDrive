@@ -28,6 +28,10 @@ export async function handleRequestDelete({
     }
   }
 
+  if (path === "") {
+    return new Response("Root directory cannot be deleted", { status: 405 });
+  }
+
   if (path !== "") {
     const obj = await bucket.head(path);
     if (obj === null) return notFound();

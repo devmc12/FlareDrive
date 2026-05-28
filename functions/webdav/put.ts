@@ -1,5 +1,12 @@
 import { ROOT_OBJECT } from "./constants";
 import { type RequestHandlerParams } from "./types";
+import { buildSafeHttpMetadata } from "./utils";
+
+/**
+ * Date: 2024-07-08
+ * Time: 11:29
+ * Desc: Uploads WebDAV objects and multipart parts into R2
+ */
 
 async function handleRequestPutMultipart({
   bucket,
@@ -53,7 +60,7 @@ export async function handleRequestPut({
 
   const result = await bucket.put(path, request.body, {
     onlyIf: request.headers,
-    httpMetadata: request.headers,
+    httpMetadata: buildSafeHttpMetadata(request, path),
     customMetadata,
   });
 

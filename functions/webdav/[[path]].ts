@@ -8,7 +8,12 @@ import { handleRequestPost } from "./post";
 import { handleRequestPropfind } from "./propfind";
 import { handleRequestPut } from "./put";
 import { type RequestHandlerParams, type WebDavAuthEnv } from "./types";
-import { authorizeWebDavRequest, notFound, parseBucketPath } from "./utils";
+import {
+  authorizeWebDavRequest,
+  isAllowedInternalObjectRequest,
+  notFound,
+  parseBucketPath,
+} from "./utils";
 
 /**
  * Date: 2024-07-08
@@ -57,6 +62,7 @@ export const onRequest: PagesFunction<WebDavAuthEnv> = async function (
   if (!auth.ok) return auth.response;
 
   if (!bucket) return notFound();
+  if (!isAllowedInternalObjectRequest(path, request)) return notFound();
 
   const method: string = (context.request as Request).method;
   const handler = HANDLERS[method] ?? handleMethodNotAllowed;

@@ -1,5 +1,11 @@
 import { type RequestHandlerParams } from "./types";
-import { notFound } from "./utils";
+import { buildSafeHttpMetadata, notFound } from "./utils";
+
+/**
+ * Date: 2024-07-08
+ * Time: 11:29
+ * Desc: Creates and completes WebDAV multipart uploads
+ */
 
 export async function handleRequestPostCreateMultipart({
   bucket,
@@ -10,7 +16,7 @@ export async function handleRequestPostCreateMultipart({
   const customMetadata = thumbnail ? { thumbnail } : undefined;
 
   const multipartUpload = await bucket.createMultipartUpload(path, {
-    httpMetadata: request.headers,
+    httpMetadata: buildSafeHttpMetadata(request, path),
     customMetadata,
   });
 

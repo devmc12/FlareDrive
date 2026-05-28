@@ -128,11 +128,13 @@ export function hasBasicAuthorizationHeader(request: Request) {
  * @returns True when both strings have identical content
  */
 export function timingSafeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
+  let mismatch = a.length ^ b.length;
+  const maxLength = Math.max(a.length, b.length);
 
-  let mismatch = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  for (let index = 0; index < maxLength; index += 1) {
+    const aCode = index < a.length ? a.charCodeAt(index) : 0;
+    const bCode = index < b.length ? b.charCodeAt(index) : 0;
+    mismatch |= aCode ^ bCode;
   }
 
   return mismatch === 0;
@@ -560,5 +562,21 @@ function getCookieValue(request: Request, name: string) {
  * @returns Whether the request is HTTPS
  */
 function isSecureRequest(request: Request) {
-  return new URL(request.url).protocol === "https:";
+  if (new URL(request.url).protocol === "https:") return true;
+
+  const forwardedProto = request.headers
+    .get("X-Forwarded-Proto")
+    ?.split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (forwardedProto === "https") return true;
+
+  try {
+    const cfVisitor = JSON.parse(request.headers.get("CF-Visitor") ?? "{}") as {
+      scheme?: unknown;
+    };
+    return cfVisitor.scheme === "https";
+  } catch {
+    return false;
+  }
 }
