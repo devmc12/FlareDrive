@@ -11,12 +11,15 @@ export type AuthStatus = {
   authenticated: boolean;
   loginKey?: LoginKeyResponse;
   publicRead?: boolean;
+  turnstileRequired?: boolean;
+  turnstileSiteKey?: string;
 };
 
 export type LoginRequest = {
   username: string;
   password: string;
   remember: boolean;
+  turnstileToken?: string;
 };
 
 const AUTH_STATUS_ENDPOINT = "/api/auth/status";
@@ -35,6 +38,7 @@ type EncryptedLoginRequest = {
   clientPublicKey: JsonWebKey;
   iv: string;
   ciphertext: string;
+  turnstileToken?: string;
 };
 
 export class AuthenticationRequiredError extends Error {
@@ -67,10 +71,13 @@ export async function loginWithPassword(request: LoginRequest) {
     throw new Error("Login encryption key is unavailable");
   }
 
+  const { turnstileToken, ...loginPayload } = request;
   const encryptedRequest = await encryptLoginRequest(
-    request,
+    loginPayload,
     authStatus.loginKey
   );
+  if (turnstileToken) encryptedRequest.turnstileToken = turnstileToken;
+
   const response = await fetch(AUTH_LOGIN_ENDPOINT, {
     method: "POST",
     credentials: "same-origin",
@@ -150,7 +157,7 @@ function notifyAuthExpired() {
  * @returns Encrypted login envelope
  */
 async function encryptLoginRequest(
-  request: LoginRequest,
+  request: Omit<LoginRequest, "turnstileToken">,
   loginKey: LoginKeyResponse
 ): Promise<EncryptedLoginRequest> {
   const serverPublicKey = await crypto.subtle.importKey(

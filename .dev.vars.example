@@ -27,6 +27,11 @@ FLAREDRIVE_LOGIN_ACCOUNT='{"username":"admin","password":"8c6976e5b5410415bde908
 # Generate your own key and keep it secret.
 FLAREDRIVE_LOGIN_PRIVATE_KEY='<private-jwk-json>'
 
+# Optional Cloudflare Turnstile keys used to verify password login attempts.
+# Set both values to require Turnstile before /api/auth/login accepts a request.
+# FLAREDRIVE_TURNSTILE_SITE_KEY="<turnstile-site-key>"
+# FLAREDRIVE_TURNSTILE_SECRET_KEY="<turnstile-secret-key>"
+
 # Session lifetime in seconds for normal and keep-signed-in logins.
 FLAREDRIVE_SESSION_TTL_SECONDS="86400"
 FLAREDRIVE_REMEMBER_TTL_SECONDS="604800"

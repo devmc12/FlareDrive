@@ -9,6 +9,7 @@ import {
   parseLoginAccount,
   sha256Hex,
   timingSafeEqual,
+  verifyTurnstileToken,
   type EncryptedLoginPayload,
   type FlareDriveAuthEnv,
 } from "../../auth";
@@ -35,9 +36,19 @@ export const onRequest: PagesFunction<FlareDriveAuthEnv> = async function ({
     return new Response("Password auth is disabled", { status: 404 });
   }
 
+  const encryptedBody = await readLoginRequestBody(request);
+  const turnstileVerified = await verifyTurnstileToken(
+    env,
+    request,
+    encryptedBody.turnstileToken
+  );
+  if (!turnstileVerified) {
+    return new Response("Turnstile verification failed", { status: 403 });
+  }
+
   let body;
   try {
-    body = await decryptLoginPayload(env, await readLoginRequestBody(request));
+    body = await decryptLoginPayload(env, encryptedBody);
   } catch {
     return new Response("Bad Request", { status: 400 });
   }

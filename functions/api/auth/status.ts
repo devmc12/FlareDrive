@@ -2,8 +2,10 @@ import {
   getAuthMode,
   getLoginPublicKey,
   getSessionFromRequest,
+  getTurnstileSiteKey,
   hasBasicAuthorizationHeader,
   isPublicReadEnabled,
+  isTurnstileEnabled,
   jsonResponse,
   type FlareDriveAuthEnv,
 } from "../../auth";
@@ -41,6 +43,8 @@ export const onRequest: PagesFunction<FlareDriveAuthEnv> = async function ({
       mode,
       authenticated: false,
       loginKey: await getLoginPublicKey(env),
+      turnstileRequired: isTurnstileEnabled(env),
+      turnstileSiteKey: getTurnstileSiteKey(env),
     });
   }
 

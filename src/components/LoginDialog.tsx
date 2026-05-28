@@ -18,9 +18,10 @@ import {
   Stack,
   TextField,
 } from "@mui/material";
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { loginWithPassword, type AuthStatus } from "../app/auth";
+import TurnstileWidget from "./TurnstileWidget";
 
 /**
  * Date: 2026-05-27
@@ -30,6 +31,8 @@ import { loginWithPassword, type AuthStatus } from "../app/auth";
 
 type LoginDialogProps = {
   open: boolean;
+  turnstileRequired?: boolean;
+  turnstileSiteKey?: string;
   onAuthenticated: (status: AuthStatus) => void;
   onError: (error: Error) => void;
 };
@@ -37,13 +40,38 @@ type LoginDialogProps = {
 /**
  * Renders a blocking sign-in dialog for password auth mode
  */
-function LoginDialog({ open, onAuthenticated, onError }: LoginDialogProps) {
+function LoginDialog({
+  open,
+  turnstileRequired = false,
+  turnstileSiteKey,
+  onAuthenticated,
+  onError,
+}: LoginDialogProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const turnstileUnavailable = turnstileRequired && !turnstileSiteKey;
+
+  useEffect(() => {
+    if (!open) return;
+
+    setLoginError(null);
+    setTurnstileToken(null);
+    setTurnstileResetKey((currentKey) => currentKey + 1);
+  }, [open]);
+
+  /**
+   * Stores a Turnstile render or challenge error for the current login attempt
+   */
+  const handleTurnstileError = useCallback(
+    (message: string) => setLoginError(message),
+    []
+  );
 
   /**
    * Submits the login request and stores only the server session cookie
@@ -51,11 +79,20 @@ function LoginDialog({ open, onAuthenticated, onError }: LoginDialogProps) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (turnstileRequired && !turnstileToken) {
+      setLoginError("Complete verification before signing in");
+      return;
+    }
 
     setBusy(true);
     setLoginError(null);
     try {
-      const status = await loginWithPassword({ username, password, remember });
+      const status = await loginWithPassword({
+        username,
+        password,
+        remember,
+        turnstileToken: turnstileToken ?? undefined,
+      });
       setPassword("");
       onAuthenticated(status);
     } catch (error) {
@@ -63,6 +100,8 @@ function LoginDialog({ open, onAuthenticated, onError }: LoginDialogProps) {
         error instanceof Error ? error : new Error("Login failed");
       setLoginError(nextError.message);
       onError(nextError);
+      setTurnstileToken(null);
+      setTurnstileResetKey((currentKey) => currentKey + 1);
     } finally {
       setBusy(false);
     }
@@ -91,6 +130,9 @@ function LoginDialog({ open, onAuthenticated, onError }: LoginDialogProps) {
         <DialogContent>
           <Stack spacing={2} sx={{ paddingTop: 1 }}>
             {loginError && <Alert severity="error">{loginError}</Alert>}
+            {turnstileUnavailable && (
+              <Alert severity="error">Turnstile is not configured</Alert>
+            )}
             <TextField
               autoFocus
               fullWidth
@@ -139,13 +181,28 @@ function LoginDialog({ open, onAuthenticated, onError }: LoginDialogProps) {
               }
               label="Keep me signed in"
             />
+            {turnstileSiteKey && (
+              <TurnstileWidget
+                key={turnstileResetKey}
+                siteKey={turnstileSiteKey}
+                disabled={busy}
+                onTokenChange={setTurnstileToken}
+                onError={handleTurnstileError}
+              />
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button
             type="submit"
             variant="contained"
-            disabled={busy || !username || !password}>
+            disabled={
+              busy ||
+              !username ||
+              !password ||
+              turnstileUnavailable ||
+              (turnstileRequired && !turnstileToken)
+            }>
             {busy ? "Signing in..." : "Sign in"}
           </Button>
         </DialogActions>

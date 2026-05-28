@@ -243,6 +243,8 @@ function App() {
               authStatus?.mode === "password" &&
               !authStatus.authenticated
             }
+            turnstileRequired={authStatus?.turnstileRequired}
+            turnstileSiteKey={authStatus?.turnstileSiteKey}
             onAuthenticated={handleAuthenticated}
             onError={setError}
           />
