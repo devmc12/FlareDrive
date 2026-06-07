@@ -95,10 +95,10 @@ const PresentationPreview = lazy(() => import("./preview/PresentationPreview"));
  * Renders the unified preview and text editing dialog
  */
 function FilePreviewDialog({
-                             target,
-                             onClose,
-                             onSaved,
-                           }: {
+  target,
+  onClose,
+  onSaved,
+}: {
   target: FilePreviewTarget | null;
   onClose: () => void;
   onSaved: () => void;
@@ -164,11 +164,11 @@ function FilePreviewDialog({
           setTextValue(await fetchWebDavText(nextFile.key));
           break;
         case PreviewKind.Zip:
-        {
-          const zipPreview = await loadZipPreview(nextFile.key);
-          setZipEntries(zipPreview.entries);
-          setZipBlob(zipPreview.blob);
-        }
+          {
+            const zipPreview = await loadZipPreview(nextFile.key);
+            setZipEntries(zipPreview.entries);
+            setZipBlob(zipPreview.blob);
+          }
           break;
         case PreviewKind.Spreadsheet:
           break;
@@ -245,6 +245,15 @@ function FilePreviewDialog({
     downloadUrl(fileUrl, extractFilename(file.key));
   };
 
+  const handleDialogClose = (
+    _event: object,
+    reason: "backdropClick" | "escapeKeyDown"
+  ) => {
+    if (saving) return;
+    if (reason === "backdropClick" && editable && !oversizedFile) return;
+
+    onClose();
+  };
   return (
     <>
       <Dialog
@@ -252,7 +261,7 @@ function FilePreviewDialog({
         fullScreen={fullScreen}
         fullWidth
         maxWidth="xl"
-        onClose={saving ? undefined : onClose}
+        onClose={handleDialogClose}
         slotProps={{
           paper: {
             sx: {
@@ -401,22 +410,22 @@ function FilePreviewDialog({
  * Renders the body for the active preview mode
  */
 function PreviewContent({
-                          file,
-                          fileUrl,
-                          fullScreen,
-                          markdownMode,
-                          oversizedFile,
-                          previewKind,
-                          setMarkdownMode,
-                          status,
-                          error,
-                          textValue,
-                          setTextValue,
-                          target,
-                          wordBlob,
-                          zipBlob,
-                          zipEntries,
-                        }: {
+  file,
+  fileUrl,
+  fullScreen,
+  markdownMode,
+  oversizedFile,
+  previewKind,
+  setMarkdownMode,
+  status,
+  error,
+  textValue,
+  setTextValue,
+  target,
+  wordBlob,
+  zipBlob,
+  zipEntries,
+}: {
   file: FileItem | null;
   fileUrl: string;
   fullScreen: boolean;
@@ -582,11 +591,11 @@ function PreviewContent({
  * Renders a plain text editing area
  */
 function TextEditor({
-                      value,
-                      fullScreen,
-                      outlined = false,
-                      onChange,
-                    }: {
+  value,
+  fullScreen,
+  outlined = false,
+  onChange,
+}: {
   value: string;
   fullScreen: boolean;
   outlined?: boolean;
@@ -633,12 +642,12 @@ function TextEditor({
  * Renders Markdown preview, split, and edit modes
  */
 function MarkdownEditor({
-                          mode,
-                          value,
-                          fullScreen,
-                          onChange,
-                          onModeChange,
-                        }: {
+  mode,
+  value,
+  fullScreen,
+  onChange,
+  onModeChange,
+}: {
   mode: MarkdownMode;
   value: string;
   fullScreen: boolean;
@@ -726,9 +735,9 @@ function MarkdownEditor({
  * Renders a list of files inside a ZIP archive
  */
 function ZipEntriesView({
-                          archiveBlob,
-                          entries,
-                        }: {
+  archiveBlob,
+  entries,
+}: {
   archiveBlob: Blob | null;
   entries: ZipEntryPreview[];
 }) {
@@ -795,10 +804,10 @@ function ZipEntriesView({
  * Renders preview fallback actions for unsupported or oversized files
  */
 function FallbackPreview({
-                           file,
-                           title,
-                           message,
-                         }: {
+  file,
+  title,
+  message,
+}: {
   file: FileItem | null;
   title: string;
   message: string;
@@ -891,14 +900,14 @@ function isFlushPreviewKind(kind: PreviewKind) {
  * Renders the confirmation flow for editing an existing file
  */
 function SaveBackDialog({
-                          file,
-                          open,
-                          saving,
-                          error,
-                          onClose,
-                          onOverwrite,
-                          onSaveAs,
-                        }: {
+  file,
+  open,
+  saving,
+  error,
+  onClose,
+  onOverwrite,
+  onSaveAs,
+}: {
   file: FileItem | null;
   open: boolean;
   saving: boolean;
