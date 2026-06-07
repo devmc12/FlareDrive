@@ -1,6 +1,8 @@
 import {
   Close as CloseIcon,
   Download as DownloadIcon,
+  FullscreenExit as FullscreenExitIcon,
+  Fullscreen as FullscreenIcon,
   OpenInNew as OpenInNewIcon,
   Save as SaveIcon,
 } from "@mui/icons-material";
@@ -113,6 +115,7 @@ function FilePreviewDialog({
 }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
+  const [desktopFullScreen, setDesktopFullScreen] = useState(false);
   const [status, setStatus] = useState<PreviewStatus>("idle");
   const [htmlMode, setHtmlMode] = useState<HtmlMode>("preview");
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +125,8 @@ function FilePreviewDialog({
   const [zipBlob, setZipBlob] = useState<Blob | null>(null);
   const [wordBlob, setWordBlob] = useState<Blob | null>(null);
   const [textPadName, setTextPadName] = useState("note.txt");
+  const [savedTextValue, setSavedTextValue] = useState("");
+  const [savedTextPadName, setSavedTextPadName] = useState("note.txt");
   const [saveBackOpen, setSaveBackOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -137,20 +142,29 @@ function FilePreviewDialog({
     file && !isWithinPreviewLimit(file, previewKind) ? file : null;
   const flushPreviewContent =
     target?.type !== "textpad" && isFlushPreviewKind(previewKind);
+  const hasUnsavedChanges =
+    editable &&
+    status === "ready" &&
+    !oversizedFile &&
+    (textValue !== savedTextValue ||
+      (target?.type === "textpad" && textPadName !== savedTextPadName));
 
   useEffect(() => {
     if (!open || !target) return;
 
     let canceled = false;
     setStatus("loading");
+    setDesktopFullScreen(false);
     setHtmlMode("preview");
     setError(null);
     setTextValue("");
+    setSavedTextValue("");
     setMarkdownMode("preview");
     setZipEntries([]);
     setZipBlob(null);
     setWordBlob(null);
     setTextPadName("note.txt");
+    setSavedTextPadName("note.txt");
     setSaveBackOpen(false);
     setSaveError(null);
     setSaving(false);
@@ -172,7 +186,11 @@ function FilePreviewDialog({
         case PreviewKind.Text:
         case PreviewKind.Html:
         case PreviewKind.Markdown:
-          setTextValue(await fetchWebDavText(nextFile.key));
+          {
+            const text = await fetchWebDavText(nextFile.key);
+            setTextValue(text);
+            setSavedTextValue(text);
+          }
           break;
         case PreviewKind.Zip:
           {
@@ -207,7 +225,17 @@ function FilePreviewDialog({
       canceled = true;
     };
   }, [open, target]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
 
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
   const saveContentType = file?.httpMetadata?.contentType || "text/plain";
 
   const saveTextPad = async () => {
@@ -242,6 +270,7 @@ function FilePreviewDialog({
     try {
       const blob = new Blob([textValue], { type: saveContentType });
       await putWebDavFile(targetKey, blob, saveContentType);
+      setSavedTextValue(textValue);
       onSaved();
       setSaveBackOpen(false);
       onClose();
@@ -256,6 +285,8 @@ function FilePreviewDialog({
     downloadUrl(fileUrl, extractFilename(file.key));
   };
 
+  const dialogFullScreen = fullScreen || desktopFullScreen;
+
   const handleDialogClose = (
     _event: object,
     reason: "backdropClick" | "escapeKeyDown"
@@ -269,14 +300,14 @@ function FilePreviewDialog({
     <>
       <Dialog
         open={open}
-        fullScreen={fullScreen}
+        fullScreen={dialogFullScreen}
         fullWidth
         maxWidth="xl"
         onClose={handleDialogClose}
         slotProps={{
           paper: {
             sx: {
-              height: fullScreen ? "100dvh" : "min(86vh, 900px)",
+              height: dialogFullScreen ? "100dvh" : "min(86vh, 900px)",
             },
           },
         }}>
@@ -303,24 +334,6 @@ function FilePreviewDialog({
             {title}
           </Typography>
           <Stack direction="row" spacing={0.25} sx={{ alignItems: "center" }}>
-            {file && (
-              <>
-                <Tooltip title="Download">
-                  <IconButton
-                    aria-label="Download file"
-                    onClick={downloadCurrentFile}>
-                    <DownloadIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Open externally">
-                  <IconButton
-                    aria-label="Open externally"
-                    onClick={() => openExternalFile(file.key)}>
-                    <OpenInNewIcon />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
             {target?.type === "textpad" && (
               <Button
                 disabled={saving}
@@ -341,6 +354,43 @@ function FilePreviewDialog({
                 }}>
                 Save
               </Button>
+            )}
+            {file && (
+              <>
+                <Tooltip title="Download">
+                  <IconButton
+                    aria-label="Download file"
+                    onClick={downloadCurrentFile}>
+                    <DownloadIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Open externally">
+                  <IconButton
+                    aria-label="Open externally"
+                    onClick={() => openExternalFile(file.key)}>
+                    <OpenInNewIcon />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+            {!fullScreen && (
+              <Tooltip
+                title={desktopFullScreen ? "Exit full screen" : "Full screen"}>
+                <IconButton
+                  aria-label={
+                    desktopFullScreen
+                      ? "Exit full screen preview"
+                      : "Full screen preview"
+                  }
+                  disabled={saving}
+                  onClick={() => setDesktopFullScreen((current) => !current)}>
+                  {desktopFullScreen ? (
+                    <FullscreenExitIcon />
+                  ) : (
+                    <FullscreenIcon />
+                  )}
+                </IconButton>
+              </Tooltip>
             )}
             <IconButton
               aria-label="Close preview"
@@ -378,7 +428,7 @@ function FilePreviewDialog({
           <PreviewContent
             file={file}
             fileUrl={fileUrl}
-            fullScreen={fullScreen}
+            fullScreen={dialogFullScreen}
             htmlMode={htmlMode}
             markdownMode={markdownMode}
             oversizedFile={oversizedFile}
