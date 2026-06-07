@@ -128,6 +128,7 @@ function FilePreviewDialog({
   const [savedTextValue, setSavedTextValue] = useState("");
   const [savedTextPadName, setSavedTextPadName] = useState("note.txt");
   const [saveBackOpen, setSaveBackOpen] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -148,6 +149,7 @@ function FilePreviewDialog({
     !oversizedFile &&
     (textValue !== savedTextValue ||
       (target?.type === "textpad" && textPadName !== savedTextPadName));
+  const displayTitle = hasUnsavedChanges ? `* ${title}` : title;
 
   useEffect(() => {
     if (!open || !target) return;
@@ -166,6 +168,7 @@ function FilePreviewDialog({
     setTextPadName("note.txt");
     setSavedTextPadName("note.txt");
     setSaveBackOpen(false);
+    setCloseConfirmOpen(false);
     setSaveError(null);
     setSaving(false);
 
@@ -256,6 +259,8 @@ function FilePreviewDialog({
         blob,
         blob.type
       );
+      setSavedTextValue(textValue);
+      setSavedTextPadName(textPadName.trim());
       onSaved();
       onClose();
     } catch (error) {
@@ -264,7 +269,10 @@ function FilePreviewDialog({
     }
   };
 
-  const saveExistingFile = async (targetKey: string) => {
+  const saveExistingFile = async (
+    targetKey: string,
+    options: { closePreview?: boolean } = {}
+  ) => {
     setSaving(true);
     setSaveError(null);
     try {
@@ -273,11 +281,27 @@ function FilePreviewDialog({
       setSavedTextValue(textValue);
       onSaved();
       setSaveBackOpen(false);
-      onClose();
+      setSaving(false);
+      if (options.closePreview) onClose();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Save failed");
       setSaving(false);
     }
+  };
+
+  const saveCurrentFile = async () => {
+    if (!file || saving) return;
+    await saveExistingFile(file.key);
+  };
+
+  const requestPreviewClose = () => {
+    if (saving) return;
+    if (hasUnsavedChanges) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+
+    onClose();
   };
 
   const downloadCurrentFile = () => {
@@ -294,8 +318,37 @@ function FilePreviewDialog({
     if (saving) return;
     if (reason === "backdropClick" && editable && !oversizedFile) return;
 
-    onClose();
+    requestPreviewClose();
   };
+
+  useEffect(() => {
+    if (!open || !editable || oversizedFile) return;
+
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() !== "s") return;
+
+      event.preventDefault();
+      if (target?.type === "textpad") {
+        void saveTextPad();
+        return;
+      }
+
+      if (status === "ready") void saveCurrentFile();
+    };
+
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [
+    editable,
+    open,
+    oversizedFile,
+    saveCurrentFile,
+    saveTextPad,
+    status,
+    target?.type,
+  ]);
+
   return (
     <>
       <Dialog
@@ -321,7 +374,7 @@ function FilePreviewDialog({
           }}>
           <Typography
             component="span"
-            title={title}
+            title={displayTitle}
             sx={{
               flexGrow: 1,
               fontSize: 18,
@@ -331,7 +384,7 @@ function FilePreviewDialog({
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}>
-            {title}
+            {displayTitle}
           </Typography>
           <Stack direction="row" spacing={0.25} sx={{ alignItems: "center" }}>
             {target?.type === "textpad" && (
@@ -395,7 +448,7 @@ function FilePreviewDialog({
             <IconButton
               aria-label="Close preview"
               disabled={saving}
-              onClick={onClose}>
+              onClick={requestPreviewClose}>
               <CloseIcon />
             </IconButton>
           </Stack>
@@ -456,13 +509,22 @@ function FilePreviewDialog({
           setSaveError(null);
           setSaveBackOpen(false);
         }}
-        onOverwrite={() => {
-          if (!file) return;
-          void saveExistingFile(file.key);
+        onSave={() => {
+          void saveCurrentFile();
         }}
         onSaveAs={(filename) => {
           if (!file) return;
-          void saveExistingFile(`${getParentDirectory(file.key)}${filename}`);
+          void saveExistingFile(`${getParentDirectory(file.key)}${filename}`, {
+            closePreview: true,
+          });
+        }}
+      />
+      <UnsavedCloseDialog
+        open={closeConfirmOpen}
+        onCancel={() => setCloseConfirmOpen(false)}
+        onDiscard={() => {
+          setCloseConfirmOpen(false);
+          onClose();
         }}
       />
     </>
@@ -1064,7 +1126,7 @@ function SaveBackDialog({
   saving,
   error,
   onClose,
-  onOverwrite,
+  onSave,
   onSaveAs,
 }: {
   file: FileItem | null;
@@ -1072,7 +1134,7 @@ function SaveBackDialog({
   saving: boolean;
   error: string | null;
   onClose: () => void;
-  onOverwrite: () => void;
+  onSave: () => void;
   onSaveAs: (filename: string) => void;
 }) {
   const defaultName = useMemo(
@@ -1141,20 +1203,43 @@ function SaveBackDialog({
         <Button disabled={saving} onClick={onClose}>
           Cancel
         </Button>
-        <Button disabled={saving} onClick={onOverwrite}>
-          Overwrite
-        </Button>
-        <Button
-          disabled={saving || sameName}
-          variant="contained"
-          onClick={handleSaveAs}>
+        <Button disabled={saving || sameName} onClick={handleSaveAs}>
           Save As
+        </Button>
+        <Button disabled={saving} variant="contained" onClick={onSave}>
+          Save
         </Button>
       </DialogActions>
     </Dialog>
   );
 }
 
+function UnsavedCloseDialog({
+  open,
+  onCancel,
+  onDiscard,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onCancel} fullWidth maxWidth="xs">
+      <DialogTitle>Unsaved changes</DialogTitle>
+      <DialogContent>
+        <Typography color="text.secondary">
+          Close without saving your changes?
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel}>Keep editing</Button>
+        <Button color="error" variant="contained" onClick={onDiscard}>
+          Discard
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 /**
  * Loads ZIP archive entry metadata from a WebDAV object
  */
