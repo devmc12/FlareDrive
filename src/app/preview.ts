@@ -33,6 +33,12 @@ const SETTINGS_STORAGE_KEY = "flaredrive.settings.v1";
 
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown"]);
 
+// HTML files may be stored with generic object metadata
+const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
+
+// HTML media types render through a sandboxed preview surface
+const HTML_CONTENT_TYPES = new Set(["text/html", "application/xhtml+xml"]);
+
 const TEXT_EXTENSIONS = new Set([
   ".txt",
   ".log",
@@ -57,8 +63,6 @@ const TEXT_EXTENSIONS = new Set([
   ".env",
   ".ini",
   ".toml",
-  ".html",
-  ".htm",
   ".svg",
 ]);
 
@@ -86,6 +90,7 @@ export enum PreviewKind {
   Image = "image",
   Text = "text",
   Markdown = "markdown",
+  Html = "html",
   Pdf = "pdf",
   Audio = "audio",
   Video = "video",
@@ -235,6 +240,7 @@ export function validatePathName(name: string) {
  */
 export function getPreviewKind(file: FileItem) {
   const contentType = file.httpMetadata?.contentType ?? "";
+  const mediaType = contentType.split(";")[0].trim().toLowerCase();
   const extension = getFileExtension(file.key);
 
   if (contentType.startsWith("image/")) return PreviewKind.Image;
@@ -243,6 +249,9 @@ export function getPreviewKind(file: FileItem) {
   }
   if (contentType.startsWith("audio/")) return PreviewKind.Audio;
   if (contentType.startsWith("video/")) return PreviewKind.Video;
+  if (HTML_EXTENSIONS.has(extension) || HTML_CONTENT_TYPES.has(mediaType)) {
+    return PreviewKind.Html;
+  }
   if (MARKDOWN_EXTENSIONS.has(extension)) return PreviewKind.Markdown;
   if (SPREADSHEET_EXTENSIONS.has(extension)) return PreviewKind.Spreadsheet;
   if (extension === ".docx") return PreviewKind.Word;
@@ -272,7 +281,11 @@ export function getPreviewKind(file: FileItem) {
  * @returns Whether the preview can be edited
  */
 export function isEditablePreviewKind(kind: PreviewKind) {
-  return kind === PreviewKind.Text || kind === PreviewKind.Markdown;
+  return (
+    kind === PreviewKind.Text ||
+    kind === PreviewKind.Html ||
+    kind === PreviewKind.Markdown
+  );
 }
 
 /**
@@ -282,7 +295,11 @@ export function isEditablePreviewKind(kind: PreviewKind) {
  * @returns Whether the preview may fetch and parse the full file
  */
 export function isWithinPreviewLimit(file: FileItem, kind: PreviewKind) {
-  if (kind === PreviewKind.Text || kind === PreviewKind.Markdown) {
+  if (
+    kind === PreviewKind.Text ||
+    kind === PreviewKind.Html ||
+    kind === PreviewKind.Markdown
+  ) {
     return file.size <= TEXT_PREVIEW_LIMIT;
   }
 

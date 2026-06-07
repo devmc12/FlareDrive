@@ -16,12 +16,14 @@ import {
   IconButton,
   Paper,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -73,6 +75,7 @@ export type FilePreviewTarget =
 
 type PreviewStatus = "idle" | "loading" | "ready" | "error";
 type MarkdownMode = "preview" | "split" | "edit";
+type HtmlMode = "preview" | "edit";
 
 type ZipEntryPreview = {
   name: string;
@@ -84,6 +87,11 @@ type ZipEntryPreview = {
 const MARKDOWN_MODES: { value: MarkdownMode; label: string }[] = [
   { value: "preview", label: "Preview" },
   { value: "split", label: "Split" },
+  { value: "edit", label: "Edit" },
+];
+
+const HTML_MODES: { value: HtmlMode; label: string }[] = [
+  { value: "preview", label: "Preview" },
   { value: "edit", label: "Edit" },
 ];
 
@@ -106,6 +114,7 @@ function FilePreviewDialog({
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const [status, setStatus] = useState<PreviewStatus>("idle");
+  const [htmlMode, setHtmlMode] = useState<HtmlMode>("preview");
   const [error, setError] = useState<string | null>(null);
   const [textValue, setTextValue] = useState("");
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>("preview");
@@ -134,6 +143,7 @@ function FilePreviewDialog({
 
     let canceled = false;
     setStatus("loading");
+    setHtmlMode("preview");
     setError(null);
     setTextValue("");
     setMarkdownMode("preview");
@@ -160,6 +170,7 @@ function FilePreviewDialog({
 
       switch (nextKind) {
         case PreviewKind.Text:
+        case PreviewKind.Html:
         case PreviewKind.Markdown:
           setTextValue(await fetchWebDavText(nextFile.key));
           break;
@@ -368,9 +379,11 @@ function FilePreviewDialog({
             file={file}
             fileUrl={fileUrl}
             fullScreen={fullScreen}
+            htmlMode={htmlMode}
             markdownMode={markdownMode}
             oversizedFile={oversizedFile}
             previewKind={previewKind}
+            setHtmlMode={setHtmlMode}
             setMarkdownMode={setMarkdownMode}
             status={status}
             error={error}
@@ -413,9 +426,11 @@ function PreviewContent({
   file,
   fileUrl,
   fullScreen,
+  htmlMode,
   markdownMode,
   oversizedFile,
   previewKind,
+  setHtmlMode,
   setMarkdownMode,
   status,
   error,
@@ -429,9 +444,11 @@ function PreviewContent({
   file: FileItem | null;
   fileUrl: string;
   fullScreen: boolean;
+  htmlMode: HtmlMode;
   markdownMode: MarkdownMode;
   oversizedFile: FileItem | null;
   previewKind: PreviewKind;
+  setHtmlMode: (mode: HtmlMode) => void;
   setMarkdownMode: (mode: MarkdownMode) => void;
   status: PreviewStatus;
   error: string | null;
@@ -495,6 +512,16 @@ function PreviewContent({
           value={textValue}
           onChange={setTextValue}
           fullScreen={fullScreen}
+        />
+      );
+    case PreviewKind.Html:
+      return (
+        <HtmlEditor
+          mode={htmlMode}
+          value={textValue}
+          fullScreen={fullScreen}
+          onChange={setTextValue}
+          onModeChange={setHtmlMode}
         />
       );
     case PreviewKind.Markdown:
@@ -732,6 +759,87 @@ function MarkdownEditor({
 }
 
 /**
+ * Renders HTML edit and sandboxed preview modes
+ */
+function HtmlEditor({
+  mode,
+  value,
+  fullScreen,
+  onChange,
+  onModeChange,
+}: {
+  mode: HtmlMode;
+  value: string;
+  fullScreen: boolean;
+  onChange: (value: string) => void;
+  onModeChange: (mode: HtmlMode) => void;
+}) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1,
+        minHeight: 0,
+      }}>
+      <Box
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          paddingX: { xs: 1, sm: 2 },
+        }}>
+        <Tabs
+          value={mode}
+          onChange={(_, nextMode: HtmlMode) => onModeChange(nextMode)}>
+          {HTML_MODES.map((option) => (
+            <Tab key={option.value} label={option.label} value={option.value} />
+          ))}
+        </Tabs>
+      </Box>
+      <Box
+        sx={{
+          display: "flex",
+          flex: "1 1 auto",
+          minHeight: 0,
+          padding: mode === "edit" ? { xs: 1, sm: 2 } : 0,
+        }}>
+        {mode === "edit" ? (
+          <TextEditor
+            value={value}
+            fullScreen={fullScreen}
+            outlined
+            onChange={onChange}
+          />
+        ) : (
+          <Paper
+            variant="outlined"
+            sx={{
+              border: 0,
+              borderRadius: 0,
+              display: "flex",
+              flex: "1 1 auto",
+              minHeight: 0,
+              minWidth: 0,
+            }}>
+            <Box
+              component="iframe"
+              sandbox="allow-scripts"
+              srcDoc={value}
+              title="HTML preview"
+              sx={{
+                border: 0,
+                flex: "1 1 auto",
+                minHeight: fullScreen ? "calc(100dvh - 122px)" : 0,
+                width: "100%",
+              }}
+            />
+          </Paper>
+        )}
+      </Box>
+    </Box>
+  );
+}
+/**
  * Renders a list of files inside a ZIP archive
  */
 function ZipEntriesView({
@@ -889,6 +997,7 @@ function PreviewLoading() {
 function isFlushPreviewKind(kind: PreviewKind) {
   return (
     kind === PreviewKind.Markdown ||
+    kind === PreviewKind.Html ||
     kind === PreviewKind.Spreadsheet ||
     kind === PreviewKind.Text ||
     kind === PreviewKind.Word ||
@@ -1068,7 +1177,9 @@ function downloadUrl(url: string, filename: string, cleanup?: () => void) {
  */
 function getOversizedMessage(file: FileItem, kind: PreviewKind) {
   const limit =
-    kind === PreviewKind.Text || kind === PreviewKind.Markdown
+    kind === PreviewKind.Text ||
+    kind === PreviewKind.Html ||
+    kind === PreviewKind.Markdown
       ? TEXT_PREVIEW_LIMIT
       : kind === PreviewKind.Zip
         ? ZIP_PREVIEW_LIMIT
